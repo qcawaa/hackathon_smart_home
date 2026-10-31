@@ -45,7 +45,16 @@ class LeakTest(unittest.TestCase):
         d.handle_recv({"recv": [{"command": "management", "id": "1",
                                  "self_test": 1}]})
         d.step()
-        self.assertEqual(published_map(c).get("leak"), 0.001)  # wire 0->0.001 (мина №1)
+        self.assertEqual(published_map(c).get("leak"), 1)
+        self.assertTrue(d.pending_wet)
+
+    def test_self_test_reports_diagnostics_without_clearing_leak(self):
+        d = LeakSensor(serial="1", logger=lambda _msg: None)
+        d.set_wet(True)
+        d.step(0)
+        result = d.on_command("self_test", 1)
+        self.assertIn("обнаружена протечка", result.lower())
+        self.assertEqual(d.signals["leak"].value, 1)
 
     def test_battery_drains(self):
         c = RecordingClient()

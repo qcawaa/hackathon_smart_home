@@ -129,3 +129,43 @@ def test_preset_device_delete_and_scenario_guard(tmp_path, monkeypatch):
         deleted = client.delete(f"/api/devices/{device_id}")
         assert deleted.status_code == 200, deleted.text
         assert client.get(f"/api/devices/{device_id}").status_code == 404
+
+
+def test_leak_self_test_returns_visible_result_without_resetting_leak(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main as api
+    storage = Storage(tmp_path)
+    monkeypatch.setattr(api, "storage", storage)
+    monkeypatch.setattr(api.manager, "storage", storage)
+    monkeypatch.setattr(api.engine, "storage", storage)
+    with TestClient(api.app) as client:
+        created = client.post("/api/devices", json={"type": "leak", "title": "Датчик кухни"})
+        assert created.status_code == 200, created.text
+        device_id = created.json()["id"]
+        assert "self_test" not in {signal["name"] for signal in created.json()["declaration"]}
+        raw_declaration = client.get(f"/api/devices/{device_id}/declaration")
+        assert "self_test" in {signal["name"] for signal in raw_declaration.json()}
+        simulated = client.post(f"/api/devices/{device_id}/simulate", json={"signal": "leak", "value": 1})
+        assert simulated.status_code == 200, simulated.text
+        checked = client.post(f"/api/devices/{device_id}/command/self_test", json={"value": 1})
+        assert checked.status_code == 200, checked.text
+        assert "обнаружена протечка" in checked.json()["command_result"].lower()
+        assert checked.json()["state"]["leak"] == 1
+
+
+def test_seed_device_can_be_deleted_and_stays_deleted_after_restart(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main as api
+    storage = Storage(tmp_path)
+    monkeypatch.setattr(api, "storage", storage)
+    monkeypatch.setattr(api.manager, "storage", storage)
+    monkeypatch.setattr(api.engine, "storage", storage)
+    storage.write("scenarios.json", [])
+    with TestClient(api.app) as client:
+        assert client.get("/api/devices/light_1").status_code == 200
+        deleted = client.delete("/api/devices/light_1")
+        assert deleted.status_code == 200, deleted.text
+        assert client.get("/api/devices/light_1").status_code == 404
+    reloaded = DeviceManager(storage, EventBus())
+    assert "light_1" not in reloaded.devices
+    assert "light_1" in storage.read("deleted_devices.json", [])

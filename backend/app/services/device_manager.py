@@ -23,15 +23,20 @@ class DeviceManager:
         self._old = {}
         self.user_devices = {}
         self.device_types = {}
+        self.seed_devices = set()
         self._seed()
 
     def _seed(self):
+        deleted = set(self.storage.read("deleted_devices.json", []))
         for device_id, family in (("leak_1", "leak"), ("light_1", "light"),
                                   ("thermostat_1", "thermostat"), ("barrier_1", "barrier"),
                                   ("counter_1", "counter")):
+            if device_id in deleted:
+                continue
             device = REGISTRY[family](serial=device_id, logger=lambda _msg: None)
             self.devices[device_id] = device
             self.device_types[device_id] = family
+            self.seed_devices.add(device_id)
         for row in self.storage.read("generic_devices.json", []):
             self._add_generic(row)
         for row in self.storage.read("preset_devices.json", []):
@@ -72,15 +77,18 @@ class DeviceManager:
                "source": "LOCAL"}
         if isinstance(dev, GenericDevice):
             row["user_created"] = True
+            row["deletable"] = True
         if device_id in self.device_types:
             preset = get_preset(self.device_types[device_id])
             row.update({"type": preset["type"], "preset_title": preset["title"],
-                        "icon": preset["icon"], "user_created": device_id in self.user_devices})
+                        "icon": preset["icon"], "user_created": device_id in self.user_devices,
+                        "deletable": device_id in self.user_devices or device_id in self.seed_devices})
             presentation = {signal["name"]: signal for signal in preset["declaration"]}
             row["declaration"] = [
                 {**signal, **{k: v for k, v in presentation.get(signal["name"], {}).items()
                               if k not in ("name", "control", "management", "kind", "group", "min", "max", "layout", "measure")}}
                 for signal in row["declaration"]
+                if signal["name"] in presentation
             ]
         return row
 
@@ -121,6 +129,25 @@ class DeviceManager:
         rows = [row for row in self.storage.read("preset_devices.json", []) if row["id"] != device_id]
         self.storage.write("preset_devices.json", rows)
 
+    def remove_device(self, device_id):
+        if device_id in self.user_devices:
+            self.remove_preset(device_id)
+            return
+        if device_id in self.devices and isinstance(self.devices[device_id], GenericDevice):
+            self.remove_generic(device_id)
+            return
+        if device_id in self.seed_devices:
+            self.devices.pop(device_id)
+            self._old.pop(device_id, None)
+            self.device_types.pop(device_id, None)
+            self.seed_devices.remove(device_id)
+            deleted = self.storage.read("deleted_devices.json", [])
+            if device_id not in deleted:
+                deleted.append(device_id)
+            self.storage.write("deleted_devices.json", deleted)
+            return
+        raise KeyError(device_id)
+
     async def command(self, device_id, signal_name, value):
         dev = self.get(device_id)
         sig = dev.signals.get(signal_name)
@@ -130,10 +157,13 @@ class DeviceManager:
             raise PermissionError("Сигнал доступен только для чтения")
         old = self.get_state(device_id)
         dev.set_value(signal_name, value)
-        dev.on_command(signal_name, value)
+        command_result = dev.on_command(signal_name, value)
         dev.step(0)
         await self._publish_diff(device_id, old)
-        return self.details(device_id)
+        result = self.details(device_id)
+        if command_result:
+            result["command_result"] = command_result
+        return result
 
     async def simulate(self, device_id, signal_name, value):
         dev = self.get(device_id)

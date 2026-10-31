@@ -224,17 +224,14 @@ async def update_device(device_id: str, body: RenameDeviceBody):
 
 @app.delete("/api/devices/{device_id}")
 async def delete_device(device_id: str):
-    device = manager.devices.get(device_id)
-    if device_id not in manager.user_devices and not (device and device.model == "generic_device"):
-        raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено или его нельзя удалить")
     affected = scenarios_using_device(device_id)
     if affected:
         titles = "», «".join(row.get("title", "Без названия") for row in affected)
         raise error(409, "DEVICE_IN_USE", f"Устройство используется в сценарии «{titles}». Сначала измените или удалите этот сценарий.")
-    if device_id in manager.user_devices:
-        manager.remove_preset(device_id)
-    else:
-        manager.remove_generic(device_id)
+    try:
+        manager.remove_device(device_id)
+    except KeyError:
+        raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено или его нельзя удалить")
     return {"ok": True}
 
 

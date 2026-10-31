@@ -124,5 +124,67 @@
       "value": 1
     },
     "id": "scenario_2"
+  },
+  {
+    "title": "тест1",
+    "enabled": true,
+    "execution_mode": "local",
+    "trigger": {
+      "device_id": "barrier_1",
+      "signal": "hold_time",
+      "operator": ">=",
+      "value": "180"
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "event",
+          "type": "input",
+          "position": {
+            "x": 35,
+            "y": 54
+          },
+          "data": {
+            "label": "КОГДА"
+          },
+          "measured": {
+            "width": 150,
+            "height": 40
+          }
+        },
+        {
+          "id": "action",
+          "type": "output",
+          "position": {
+            "x": 390,
+            "y": 54
+          },
+          "data": {
+            "label": "ТОГДА"
+          },
+          "measured": {
+            "width": 150,
+            "height": 40
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "event",
+          "target": "action",
+          "animated": true,
+          "markerEnd": {
+            "type": "arrowclosed"
+          }
+        }
+      ]
+    },
+    "action": {
+      "device_id": "barrier_1",
+      "signal": "close_cmd",
+      "value": 1
+    },
+    "id": "scenario_3"
   }
 ]

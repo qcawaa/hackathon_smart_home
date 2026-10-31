@@ -23,10 +23,23 @@ class LeakSensor(Device):
     def set_wet(self, wet: bool) -> None:
         self.pending_wet = wet
 
-    def on_command(self, name: str, value) -> None:
+    def on_command(self, name: str, value) -> str | None:
         if name == "self_test" and value:
-            self.pending_wet = False
-            self.log(f"[{self.model}] самотест: датчик сухой")
+            issues = []
+            if int(self.signals["leak"].value) == 1 or self.pending_wet:
+                issues.append("обнаружена протечка")
+            if int(self.signals["tamper"].value) == 1:
+                issues.append("вскрыт корпус")
+            battery = float(self.signals["battery"].value)
+            if battery <= 10:
+                issues.append(f"низкий заряд батареи: {battery:g}%")
+            if issues:
+                result = "Проверка завершена. " + "; ".join(issues).capitalize() + "."
+            else:
+                result = f"Проверка пройдена: протечек нет, корпус закрыт, заряд батареи {battery:g}%."
+            self.log(f"[{self.model}] самопроверка: {result}")
+            return result
+        return None
 
     def tick(self, dt: int) -> None:
         wet_now = 1 if self.pending_wet else 0
