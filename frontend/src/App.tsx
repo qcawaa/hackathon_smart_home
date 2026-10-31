@@ -393,12 +393,12 @@ function ScenarioEditor({scenario,devices,onClose,onSaved}:{scenario:Scenario|nu
 }
 
 function DeviceSelect({devices,value,onChange}:{devices:Device[];value:string;onChange:(value:string)=>void}){
-  return <Select allowClear placeholder="Выберите устройство" value={value||undefined} onChange={onChange} options={devices.map(device=>({value:device.id,label:device.title}))} showSearch optionFilterProp="label"/>;
+  return <Select allowClear placeholder="Выберите устройство" value={value||undefined} onChange={onChange} options={devices.map(device=>({value:device.id,label:device.title}))} />;
 }
 function SignalSelect({device,context,value,onChange,disabled}:{device?:Device;context:SignalContext;value:string;onChange:(value:string)=>void;disabled:boolean}){
   const signals=getAvailableSignals(device,context);
   const groups=[{label:context==='action'?'Доступные действия':'Состояния и показания',options:signals.map(signal=>({value:signal.name,label:signal.title,signal}))}];
-  return <Select allowClear disabled={disabled||!signals.length} placeholder={disabled?'Сначала выберите устройство':'Выберите параметр'} value={value||undefined} onChange={onChange} options={groups} optionLabelProp="label" optionRender={({data}:any)=><div className="signal-option"><b>{data.signal.title}</b><small>{data.signal.description||groups[data.signal.group]||'Параметр устройства'}{data.signal.measure?` · ${data.signal.measure}`:''}</small></div>} showSearch optionFilterProp="label" popupMatchSelectWidth={false} listHeight={280} placement="bottomLeft" getPopupContainer={node=>node.closest('.ant-modal-content')||document.body} popupClassName="scenario-select-popup"/>;
+  return <Select allowClear disabled={disabled||!signals.length} placeholder={disabled?'Сначала выберите устройство':'Выберите параметр'} value={value||undefined} onChange={onChange} options={groups} optionLabelProp="label" optionRender={({data}:any)=><div className="signal-option"><b>{data.signal.title}</b><small>{data.signal.description||groups[data.signal.group]||'Параметр устройства'}{data.signal.measure?` · ${data.signal.measure}`:''}</small></div>}  popupMatchSelectWidth={false} listHeight={280} placement="bottomLeft" getPopupContainer={node=>node.closest('.ant-modal-content')||document.body} popupClassName="scenario-select-popup"/>;
 }
 function RuleValueFields({signal,value,operator,onChange,role}:{signal:Signal;value:any;operator:string;onChange:(patch:Partial<Rule>)=>void;role:string}){
   if(isBooleanSignal(signal)||isEnumSignal(signal)){

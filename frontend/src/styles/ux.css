@@ -37,3 +37,31 @@
 .signal-control>b{font-size:17px;color:#eef8ff}
 .range-control{width:min(100%,300px);display:flex;align-items:center;gap:14px}.range-control .ant-slider{flex:1;margin:8px 0}.range-control .ant-typography{min-width:54px;text-align:right;color:#dceef8}
 @media(max-width:640px){.scenario-modal{max-width:calc(100vw - 16px)!important;margin:8px auto}.scenario-modal .ant-modal-body{max-height:calc(100vh - 150px);padding:10px}.editor-step{padding:14px 12px 5px}.flow-canvas-compact{height:120px}.builder-presets{display:block}.builder-presets>div{justify-content:flex-start;margin-top:8px}.technical-kicker{display:block;margin:3px 0 0}.parameter-card .ant-card-body{padding:13px}}
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+input:not([readonly]),
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.ant-select,
+.ant-select input,
+.ant-select-selector {
+  cursor: pointer !important;
+  caret-color: transparent !important;
+}
+button,
+.ant-switch,
+.ant-slider,
+.ant-menu-item,
+.ant-btn {
+  cursor: pointer;
+}
+.log-list {
+  user-select: text;
+  -webkit-user-select: text;
+}
