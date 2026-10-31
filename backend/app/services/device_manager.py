@@ -12,6 +12,7 @@ if str(EMU) not in sys.path:
     sys.path.insert(0, str(EMU))
 from devices import REGISTRY  # noqa: E402
 from .generic_device import GenericDevice
+from .device_presets import PRESETS, get_preset
 
 
 class DeviceManager:
@@ -20,6 +21,8 @@ class DeviceManager:
         self.devices = {}
         self.tick_task = None
         self._old = {}
+        self.user_devices = {}
+        self.device_types = {}
         self._seed()
 
     def _seed(self):
@@ -28,9 +31,22 @@ class DeviceManager:
                                   ("counter_1", "counter")):
             device = REGISTRY[family](serial=device_id, logger=lambda _msg: None)
             self.devices[device_id] = device
+            self.device_types[device_id] = family
         for row in self.storage.read("generic_devices.json", []):
             self._add_generic(row)
+        for row in self.storage.read("preset_devices.json", []):
+            if row.get("type") in PRESETS and row.get("id") not in self.devices:
+                self._add_preset(row)
         self._snapshot_all()
+
+    def _add_preset(self, row):
+        device_type = row["type"]
+        kwargs = {"resource": "electricity"} if device_type == "counter" else {}
+        device = REGISTRY[device_type](serial=row["id"], logger=lambda _msg: None, **kwargs)
+        device.title = row["title"]
+        self.devices[row["id"]] = device
+        self.device_types[row["id"]] = device_type
+        self.user_devices[row["id"]] = {"type": device_type, "title": row["title"]}
 
     def _add_generic(self, row):
         device_id = row["id"]
@@ -51,12 +67,59 @@ class DeviceManager:
 
     def details(self, device_id):
         dev = self.get(device_id)
-        return {"id": device_id, "title": dev.title, "model": dev.model,
-                "state": self.get_state(device_id), "declaration": dev.declaration(),
-                "source": "LOCAL"}
+        row = {"id": device_id, "title": dev.title, "model": dev.model,
+               "state": self.get_state(device_id), "declaration": dev.declaration(),
+               "source": "LOCAL"}
+        if isinstance(dev, GenericDevice):
+            row["user_created"] = True
+        if device_id in self.device_types:
+            preset = get_preset(self.device_types[device_id])
+            row.update({"type": preset["type"], "preset_title": preset["title"],
+                        "icon": preset["icon"], "user_created": device_id in self.user_devices})
+            presentation = {signal["name"]: signal for signal in preset["declaration"]}
+            row["declaration"] = [
+                {**signal, **{k: v for k, v in presentation.get(signal["name"], {}).items()
+                              if k not in ("name", "control", "management", "kind", "group", "min", "max", "layout", "measure")}}
+                for signal in row["declaration"]
+            ]
+        return row
 
     def list(self):
         return [self.details(device_id) for device_id in self.devices]
+
+    def create_preset(self, device_type, title):
+        if device_type not in PRESETS:
+            raise ValueError("Неизвестный тип устройства")
+        device_id = f"{device_type}_{uuid.uuid4().hex[:8]}"
+        row = {"id": device_id, "type": device_type, "title": title}
+        rows = self.storage.read("preset_devices.json", [])
+        rows.append(row)
+        self.storage.write("preset_devices.json", rows)
+        self._add_preset(row)
+        self._old[device_id] = self.get_state(device_id)
+        return self.details(device_id)
+
+    def update_preset(self, device_id, title):
+        if device_id not in self.user_devices:
+            raise KeyError(device_id)
+        self.devices[device_id].title = title
+        self.user_devices[device_id]["title"] = title
+        rows = self.storage.read("preset_devices.json", [])
+        for row in rows:
+            if row["id"] == device_id:
+                row["title"] = title
+        self.storage.write("preset_devices.json", rows)
+        return self.details(device_id)
+
+    def remove_preset(self, device_id):
+        if device_id not in self.user_devices:
+            raise KeyError(device_id)
+        self.devices.pop(device_id)
+        self._old.pop(device_id, None)
+        self.device_types.pop(device_id, None)
+        self.user_devices.pop(device_id, None)
+        rows = [row for row in self.storage.read("preset_devices.json", []) if row["id"] != device_id]
+        self.storage.write("preset_devices.json", rows)
 
     async def command(self, device_id, signal_name, value):
         dev = self.get(device_id)
@@ -77,6 +140,9 @@ class DeviceManager:
         old = self.get_state(device_id)
         if signal_name == "leak" and hasattr(dev, "set_wet"):
             dev.set_wet(bool(value))
+            dev.step(0)
+        elif signal_name == "motion" and hasattr(dev, "set_motion"):
+            dev.set_motion(bool(value))
             dev.step(0)
         elif signal_name == "obstacle" and hasattr(dev, "set_obstacle"):
             dev.set_obstacle(bool(value))
@@ -144,6 +210,21 @@ class DeviceManager:
         self._old.pop(device_id, None)
         rows = [row for row in self.storage.read("generic_devices.json", []) if row["id"] != device_id]
         self.storage.write("generic_devices.json", rows)
+
+    def rename_generic(self, device_id, title):
+        if device_id not in self.devices or not isinstance(self.devices[device_id], GenericDevice):
+            raise KeyError(device_id)
+        rows = self.storage.read("generic_devices.json", [])
+        found = False
+        for row in rows:
+            if row["id"] == device_id:
+                row["title"] = title
+                found = True
+        if not found:
+            raise KeyError(device_id)
+        self.storage.write("generic_devices.json", rows)
+        self.devices[device_id].title = title
+        return self.details(device_id)
 
     def update_generic(self, device_id, data):
         if device_id not in self.devices or not isinstance(self.devices[device_id], GenericDevice):

@@ -102,3 +102,30 @@ def test_api_local_demo_and_persistence(tmp_path, monkeypatch):
             import time
             time.sleep(.01)
         assert client.get("/api/devices/light_1/state").json()["lamp"] == 1
+
+
+def test_preset_device_delete_and_scenario_guard(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main as api
+    storage = Storage(tmp_path)
+    monkeypatch.setattr(api, "storage", storage)
+    monkeypatch.setattr(api.manager, "storage", storage)
+    monkeypatch.setattr(api.engine, "storage", storage)
+    with TestClient(api.app) as client:
+        created = client.post("/api/devices", json={"type": "light", "title": "Свет в коридоре"})
+        assert created.status_code == 200, created.text
+        device_id = created.json()["id"]
+        assert created.json()["user_created"] is True
+        scenario = client.post("/api/scenarios", json={
+            "title": "Тест удаления", "enabled": True,
+            "trigger": {"device_id": "leak_1", "signal": "leak", "operator": "==", "value": 1},
+            "actions": [{"device_id": device_id, "signal": "lamp", "value": 1}],
+        })
+        assert scenario.status_code == 200, scenario.text
+        blocked = client.delete(f"/api/devices/{device_id}")
+        assert blocked.status_code == 409
+        assert "Тест удаления" in blocked.json()["error"]["message"]
+        assert client.delete(f"/api/scenarios/{scenario.json()['id']}").status_code == 200
+        deleted = client.delete(f"/api/devices/{device_id}")
+        assert deleted.status_code == 200, deleted.text
+        assert client.get(f"/api/devices/{device_id}").status_code == 404

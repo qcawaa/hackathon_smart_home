@@ -40,23 +40,5 @@
         "layout": null
       }
     ]
-  },
-  {
-    "id": "device_d05d5266",
-    "title": "Светильник",
-    "signals": [
-      {
-        "name": "lamp",
-        "title": "Свет",
-        "control": "range",
-        "management": "rw",
-        "kind": "capability",
-        "value": 0,
-        "measure": "",
-        "min": null,
-        "max": null,
-        "layout": null
-      }
-    ]
   }
 ]

@@ -88,11 +88,16 @@ class ScenarioEngine:
                     if (trigger.get("device_id") != event.get("device_id") or
                             trigger.get("signal") != event.get("signal")):
                         continue
-                    matched = compare(event.get("value"), trigger.get("operator", "=="),
-                                      trigger.get("value", 1))
+                    try:
+                        trigger_signal = self.manager.get(event["device_id"]).signals[event["signal"]]
+                    except KeyError:
+                        continue
+                    event_signal = trigger_signal.control in ("push_time", "button") and trigger_signal.management == "r"
+                    matched = event_signal or compare(event.get("value"), trigger.get("operator", "=="),
+                                                      trigger.get("value", 1))
                     previous = self._trigger_active.get(scenario["id"], False)
-                    self._trigger_active[scenario["id"]] = matched
-                    if not matched or previous:
+                    self._trigger_active[scenario["id"]] = False if event_signal else matched
+                    if not matched or (previous and not event_signal):
                         continue
                     self.log(scenario["id"], f"Событие: {self.describe_signal(event['device_id'], event['signal'], event.get('value'))}", "trigger")
                     conditions = scenario.get("conditions", [])

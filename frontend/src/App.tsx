@@ -1,54 +1,33 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Col, Collapse, Descriptions, Divider, Drawer, Form, Input, InputNumber, Layout, Menu, Modal, notification, Row, Select, Slider, Space, Switch, Tag, Tooltip, Typography } from 'antd';
-import { ApiOutlined, AppstoreOutlined, BulbOutlined, ControlOutlined, DeleteOutlined, DeploymentUnitOutlined, InfoCircleOutlined, PlusOutlined, QuestionCircleOutlined, ThunderboltOutlined, ToolOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Col, Descriptions, Divider, Drawer, Form, Input, InputNumber, Layout, Menu, Modal, notification, Row, Select, Slider, Space, Switch, Tag, Typography } from 'antd';
+import { ApiOutlined, AppstoreOutlined, BulbOutlined, ControlOutlined, DeleteOutlined, DeploymentUnitOutlined, InfoCircleOutlined, PlusOutlined, QuestionCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { Background, Controls, MarkerType, ReactFlow, addEdge, useEdgesState, useNodesState, type Connection, type Edge, type Node } from '@xyflow/react';
 import { request, wsUrl } from './api';
 
 const { Sider, Header, Content } = Layout;
 const { Title, Text } = Typography;
-type Signal = { name: string; title: string; description?: string; control: string; management: string; kind: string; group: string; measure?: string; min?: number; max?: number; layout?: Record<string, string> };
-type Device = { id: string; title: string; model: string; state: Record<string, any>; declaration: Signal[]; source: string };
+type Signal = { name: string; title: string; description?: string; control: string; management: string; kind: string; group: string; section?: string; event_title?: string; event_on?: string; event_off?: string; action_title?: string; action_on?: string; action_off?: string; measure?: string; min?: number; max?: number; layout?: Record<string, string> };
+type Device = { id: string; title: string; model: string; type?: string; preset_title?: string; icon?: string; user_created?: boolean; state: Record<string, any>; declaration: Signal[]; source: string };
+type DevicePreset = { type: string; title: string; icon: string; description: string; features: Record<string,string[]>; declaration: Signal[] };
 type Scenario = { id: string; title: string; enabled: boolean; execution_mode: string; trigger: any; condition?: any; conditions?: any[]; action?: any; actions?: any[]; graph?: { nodes: Node[]; edges: Edge[] } };
 type SignalContext = 'trigger' | 'condition' | 'action';
 type Rule = { device_id: string; signal: string; operator: string; value: any };
-type Parameter = { name: string; title: string; control: string; management: string; kind: string; value: any; measure?: string; min?: number; max?: number; layout?: Record<string,string> };
 const groups: Record<string, string> = { property: 'Свойства', capability: 'Возможности', setting: 'Настройки' };
 
 const operatorLabels: Record<string,string> = { '==':'Равно', eq:'Равно', '!=':'Не равно', ne:'Не равно', '>':'Больше', gt:'Больше', '<':'Меньше', lt:'Меньше', '>=':'Больше или равно', gte:'Больше или равно', '<=':'Меньше или равно', lte:'Меньше или равно' };
-const typeLabels: Record<string,string> = { switch:'Переключатель', range:'Бегунок', number:'Число', counter:'Счётчик', list:'Список вариантов', text:'Текст', push_time:'Команда', graph:'Числовое значение' };
-const accessLabels: Record<string,string> = { r:'Только чтение', rw:'Чтение и управление', w:'Только команда' };
-const controlHelp: Record<string,string> = {
-  switch:'Переключатель Вкл/Выкл. Подходит для света, реле или другого управляемого состояния.',
-  range:'Бегунок для числа в диапазоне, например яркости. Границы задаются в дополнительных настройках; если их не задать, будет диапазон 0–100.',
-  number:'Число: температура, напряжение или другое единичное показание/значение.',
-  counter:'Числовой счётчик с единицей измерения. Сам по себе не увеличивается: виртуальному устройству нужна отдельная логика обновления.',
-  list:'Выбор одного состояния из заданных вариантов: например «Авто», «Ручной», «Выкл».',
-  text:'Текстовое значение, например название или короткое сообщение.',
-  push_time:'Разовая команда без значения: например «Открыть» или «Самотест».',
-};
-const roleHelp: Record<string,string> = {
-  property:'Показание или состояние, которое устройство сообщает: температура, протечка, заряд.',
-  capability:'Управление устройством: свет, реле, команда открытия. Сигнал появится в разделе «Возможности».',
-  setting:'Настройка поведения устройства: порог, целевая температура или период отчёта. Появится в разделе «Настройки».',
-};
-const accessHelp: Record<string,string> = {
-  r:'Значение только показывается. Обычно это показание датчика.',
-  rw:'Значение показывается и его можно менять вручную или сценарием.',
-  w:'Разовая команда. Её можно вызвать, но устройство не хранит обычное состояние по этому параметру.',
-};
 
 export function getAvailableSignals(device: Device | undefined, context: SignalContext): Signal[] {
   if (!device) return [];
   return device.declaration.filter(signal => {
-    if (signal.name === 'fw') return false;
+    if (signal.name === 'fw' || signal.kind === 'system') return false;
     const commandLike = signal.control === 'push_time' || signal.control === 'button' || /_cmd$/i.test(signal.name);
     if (context === 'action') return ['rw','w'].includes(signal.management);
-    return ['r','rw'].includes(signal.management) && !commandLike;
+    return ['r','rw'].includes(signal.management) && (!commandLike || Boolean(signal.event_title));
   });
 }
 
 function getVisibleSignals(device: Device) {
-  return device.declaration.filter(signal => signal.name !== 'fw');
+  return device.declaration.filter(signal => signal.name !== 'fw' && signal.kind !== 'system');
 }
 
 function isBooleanSignal(signal: Signal) {
@@ -80,8 +59,10 @@ function getPrimarySignal(device: Device) {
     emul_leak_sensor: 'leak', emul_light: 'lamp', emul_thermostat: 'mode',
     emul_barrier: 'state', emul_counter: 'load_relay', emul_fire_detector: 'alarm',
     emul_ventilation: 'mode', emul_elevator: 'door', emul_leak_hub: 'leak',
+    emul_water_valve: 'opened', emul_motion_sensor: 'motion',
   };
-  const preferredSignal = signals.find(signal => signal.name === preferred[device.model]);
+  const typePreferred: Record<string,string> = {light:'lamp',leak:'leak',thermostat:'mode',barrier:'state',counter:'total',elevator:'door',water_valve:'opened',motion_sensor:'motion'};
+  const preferredSignal = signals.find(signal => signal.name === (typePreferred[device.type||''] || preferred[device.model]));
   if (preferredSignal) return preferredSignal;
   return signals.find(signal => signal.control === 'switch')
     || signals.find(signal => signal.layout && Object.keys(signal.layout).length)
@@ -101,6 +82,7 @@ export function getHumanValue(signal: Signal, value: any) {
 function getDefaultRuleValue(signal: Signal) { return signal.layout?.['0'] !== undefined ? 0 : signal.min ?? 0; }
 function getActionDefault(signal: Signal, device?: Device) {
   if (isCommandSignal(signal)) return 1;
+  if (signal.control === 'combolist') return Math.min(...Object.keys(signal.layout||{}).map(Number).filter(value=>Number.isFinite(value)&&value>0));
   if (isBooleanSignal(signal)) return 1;
   if (isEnumSignal(signal)) return Number(Object.keys(signal.layout || {})[0] ?? 0);
   return device?.state?.[signal.name] ?? signal.min ?? 0;
@@ -110,6 +92,10 @@ function formatRulePhrase(rule: Rule, devices: Device[]) {
   const signal = device?.declaration.find(item => item.name === rule.signal);
   if (!signal) return 'выбранное событие';
   const title = signal.title.toLocaleLowerCase('ru-RU');
+  if (signal.event_title) {
+    const event = Number(rule.value) ? (signal.event_on || signal.event_title) : (signal.event_off || signal.event_title);
+    return `${device?.title.toLocaleLowerCase('ru-RU')}: ${event.toLocaleLowerCase('ru-RU')}`;
+  }
   if (isBooleanSignal(signal)) {
     const value = getHumanValue(signal, rule.value).toLocaleLowerCase('ru-RU');
     if (/протеч|вода|leak/i.test(`${signal.name} ${signal.title}`)) return rule.value ? 'обнаружена протечка' : 'протечка не обнаружена';
@@ -123,8 +109,9 @@ function formatActionPhrase(action: any, devices: Device[]) {
   const device = devices.find(item => item.id === action?.device_id);
   const signal = device?.declaration.find(item => item.name === action?.signal);
   if (!signal) return 'выберите действие';
-  if (isCommandSignal(signal)) return `${signal.title.toLocaleLowerCase('ru-RU')} (${device?.title.toLocaleLowerCase('ru-RU')})`;
+  if (isCommandSignal(signal)) return `${(signal.action_title||signal.title).toLocaleLowerCase('ru-RU')} (${device?.title.toLocaleLowerCase('ru-RU')})`;
   if (isBooleanSignal(signal)) {
+    if (signal.action_on || signal.action_off) { const label=(Number(action.value)?signal.action_on:signal.action_off)||signal.action_title||signal.title; return `${label.toLocaleLowerCase('ru-RU')} (${device?.title.toLocaleLowerCase('ru-RU')})`; }
     const verb = Number(action.value) ? 'включить' : 'выключить';
     const subject = /свет|ламп|light|lamp/i.test(`${signal.name} ${signal.title}`) ? 'свет' : signal.title.toLocaleLowerCase('ru-RU');
     return `${verb} ${subject}`;
@@ -147,7 +134,12 @@ export default function App() {
   const [logs, setLogs] = useState<any[]>([]);
   const [live, setLive] = useState<any>({ configured: false, connected: false });
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderDevice, setBuilderDevice] = useState<Device | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDevice, setRenameDevice] = useState<Device | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Device | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [liveOpen, setLiveOpen] = useState(false);
   const [scenarioEdit, setScenarioEdit] = useState<Scenario | null>(null);
   const [scenarioEditorOpen, setScenarioEditorOpen] = useState(false);
@@ -163,37 +155,40 @@ export default function App() {
   }, []);
   const detail = async (id: string) => { try { setSelected(await request<Device>(`/devices/${id}`)); setPage('devices'); } catch (e:any) { notification.error({ message: e.message }); } };
   const command = async (device: Device, signal: Signal, value: any) => { try { await request(`/devices/${device.id}/command/${signal.name}`, { method:'POST', body: JSON.stringify({value}) }); notification.success({message:'Команда выполнена', description:`${signal.title}: ${formatSignalValue(signal,value)}`}); await refresh(); if(selected?.id===device.id) setSelected(await request<Device>(`/devices/${device.id}`)); } catch(e:any) { notification.error({message:'Не удалось изменить сигнал',description:e.message}); } };
-  const openBuilder = (device: Device | null = null) => { setBuilderDevice(device); setBuilderOpen(true); };
-  const removeDevice = (device: Device) => Modal.confirm({
-    title: `Удалить устройство «${device.title}»?`,
-    content: 'Устройство будет удалено из списка. Связанные сценарии отключатся, чтобы не запускать команды для отсутствующего устройства.',
-    okText: 'Удалить', cancelText: 'Отмена', okType: 'danger',
-    onOk: async () => {
-      try {
-        const result = await request<any>(`/generic-devices/${device.id}`, { method: 'DELETE' });
-        const affected = scenarios.filter(scenario=>scenarioUsesDevice(scenario,device.id));
-        setDevices(current=>current.filter(item=>item.id!==device.id));
-        setScenarios(current=>current.map(scenario=>scenarioUsesDevice(scenario,device.id)?{...scenario,enabled:false}:scenario));
-        notification.success({message:'Устройство удалено',description:(result.disabled_scenarios??affected.length) ? `Отключено сценариев: ${result.disabled_scenarios??affected.length}` : undefined});
-        setSelected(null); setPage('devices'); await refresh();
-      } catch (e:any) { notification.error({message:'Не удалось удалить устройство',description:e.message}); }
-    },
-  });
-  const builderDone = async (updatedDeviceId?: string) => {
-    await refresh();
-    if (updatedDeviceId) {
-      try { setSelected(await request<Device>(`/devices/${updatedDeviceId}`)); }
-      catch { /* The refreshed device list remains available if details cannot be reloaded. */ }
-    }
+  const removeDevice = (device: Device) => { setDeleteTarget(device); setDeleteError(''); };
+  const confirmDeleteDevice = async () => {
+    if (!deleteTarget || deleteBusy) return;
+    const target=deleteTarget;
+    setDeleteBusy(true); setDeleteError('');
+    try {
+      await request(`/devices/${encodeURIComponent(target.id)}`, { method:'DELETE' });
+      setDevices(current=>current.filter(item=>item.id!==target.id));
+      setSelected(current=>current?.id===target.id?null:current);
+      setDeleteTarget(null); setPage('devices');
+      notification.success({message:`«${target.title}» удалено`});
+      await refresh();
+    } catch(e:any) {
+      setDeleteError(e?.message||'Сервер не подтвердил удаление. Обновите страницу и попробуйте ещё раз.');
+    } finally { setDeleteBusy(false); }
   };
-  const menu = [{key:'overview',icon:<AppstoreOutlined/>,label:'Обзор'},{key:'devices',icon:<ControlOutlined/>,label:'Устройства'},{key:'scenarios',icon:<DeploymentUnitOutlined/>,label:'Сценарии'},{key:'builder',icon:<ToolOutlined/>,label:'Конструктор'}];
-  return <Layout className="app-shell"><Sider width={238} className="side"><div className="brand"><div><b>UJIN</b><span>SMART HOME</span></div></div><Menu mode="inline" selectedKeys={[page]} items={menu} onClick={({key})=>{setPage(key);setSelected(null); if(key==='builder')openBuilder();}}/></Sider><Layout><Header className="topbar"><div><Text className="crumb">ПРОСТРАНСТВО / </Text><Text strong>{menu.find(m=>m.key===page)?.label.toUpperCase() || 'УСТРОЙСТВО'}</Text></div><Space><Tag color="cyan" className="mode-tag">LOCAL</Tag><span className="live-dot"/><Text type="secondary">{devices.length} устройств</Text><Button size="small" onClick={()=>setLiveOpen(true)}>LIVE · {live.configured?'настроен':'настройка'}</Button></Space></Header><Content className="content">
-    {page==='overview' && <Dashboard devices={devices} scenarios={scenarios} logs={logs} onOpen={detail} onCreate={()=>openScenarioEditor(null)} />}
-    {page==='devices' && <DevicesPage devices={devices} selected={selected} onOpen={detail} onBack={()=>setSelected(null)} onCommand={command} onSimulate={async(d,v)=>{try{await request(`/devices/${d.id}/simulate`,{method:'POST',body:JSON.stringify({signal:'leak',value:v})});await refresh();if(selected)setSelected(await request<Device>(`/devices/${selected.id}`));}catch(e:any){notification.error({message:e.message});}}} onBuild={()=>openBuilder()} onEditDevice={device=>openBuilder(device)} onDeleteDevice={removeDevice} />}
+  const openScenariosForDelete = () => { setDeleteTarget(null); setDeleteError(''); setSelected(null); setPage('scenarios'); };
+  const saveRename = async () => {
+    if (!renameDevice || renameTitle.trim().length < 2) return;
+    try { await request(`/devices/${renameDevice.id}`, {method:'PUT',body:JSON.stringify({title:renameTitle.trim()})}); setRenameOpen(false); setRenameDevice(null); await refresh(); if(selected?.id===renameDevice.id) setSelected(await request<Device>(`/devices/${renameDevice.id}`)); notification.success({message:'Название обновлено'}); }
+    catch(e:any) { notification.error({message:'Не удалось изменить название',description:e.message}); }
+  };
+  const menu = [{key:'overview',icon:<AppstoreOutlined/>,label:'Главная'},{key:'devices',icon:<ControlOutlined/>,label:'Устройства'},{key:'scenarios',icon:<DeploymentUnitOutlined/>,label:'Сценарии'}];
+  return <Layout className="app-shell"><Sider width={238} className="side"><div className="brand"><div><b>UJIN</b><span>SMART HOME</span></div></div><Menu mode="inline" selectedKeys={[page]} items={menu} onClick={({key})=>{setPage(key);setSelected(null);}}/></Sider><Layout><Header className="topbar"><div><Text className="crumb">ПРОСТРАНСТВО / </Text><Text strong>{menu.find(m=>m.key===page)?.label.toUpperCase() || 'УСТРОЙСТВО'}</Text></div><Space><Tag color="cyan" className="mode-tag">LOCAL</Tag><span className="live-dot"/><Text type="secondary">{devices.length} устройств</Text><Button size="small" onClick={()=>setLiveOpen(true)}>LIVE · {live.configured?'настроен':'настройка'}</Button></Space></Header><Content className="content">
+    {page==='overview' && <Dashboard devices={devices} scenarios={scenarios} logs={logs} onOpen={detail} onCreate={()=>setBuilderOpen(true)} onDelete={removeDevice} />}
+    {page==='devices' && <DevicesPage devices={devices} selected={selected} onOpen={detail} onBack={()=>setSelected(null)} onCommand={command} onSimulate={async(d,v)=>{const signal=d.type==='motion_sensor'?'motion':'leak';try{await request(`/devices/${d.id}/simulate`,{method:'POST',body:JSON.stringify({signal,value:v})});await refresh();if(selected)setSelected(await request<Device>(`/devices/${selected.id}`));}catch(e:any){notification.error({message:e.message});}}} onBuild={()=>setBuilderOpen(true)} onEditDevice={device=>{setRenameDevice(device);setRenameTitle(device.title);setRenameOpen(true);}} onDeleteDevice={removeDevice} />}
     {page==='scenarios' && <ScenarioPage scenarios={scenarios} devices={devices} logs={logs} onEdit={openScenarioEditor} onRefresh={refresh} />}
-    {page==='builder' && <BuilderLanding onOpen={()=>openBuilder()} onDeviceOpen={detail} devices={devices} />}
   </Content></Layout>
-  <DeviceBuilder open={builderOpen} device={builderDevice} onClose={()=>{setBuilderOpen(false);setBuilderDevice(null);if(page==='builder')setPage('devices');}} onDone={builderDone}/>
+  <DevicePresetFlow open={builderOpen} onClose={()=>setBuilderOpen(false)} onDone={async id=>{setBuilderOpen(false);await refresh();if(id)await detail(id);}}/>
+  <Modal open={Boolean(deleteTarget)} title="Удалить устройство?" okText="Удалить" cancelText="Отмена" okButtonProps={{danger:true}} confirmLoading={deleteBusy} onCancel={()=>{if(!deleteBusy){setDeleteTarget(null);setDeleteError('');}}} onOk={confirmDeleteDevice}>
+    {deleteTarget&&<Text>Устройство «{deleteTarget.title}» будет удалено из списка.</Text>}
+    {deleteError&&<Alert style={{marginTop:14}} type="warning" showIcon message="Удаление не выполнено" description={<Space direction="vertical" size={8}><span>{deleteError}</span>{/используется в сценарии/i.test(deleteError)&&<Button type="link" onClick={openScenariosForDelete} style={{padding:0}}>Перейти к сценариям</Button>}</Space>}/>}
+  </Modal>
+  <Modal title="Изменить название устройства" open={renameOpen} onCancel={()=>setRenameOpen(false)} onOk={saveRename} okText="Сохранить" okButtonProps={{disabled:renameTitle.trim().length<2}}><Form layout="vertical"><Form.Item label="Название"><Input value={renameTitle} maxLength={80} onChange={e=>setRenameTitle(e.target.value)}/></Form.Item></Form><Text type="secondary">Тип устройства менять нельзя. Чтобы выбрать другой тип, удалите устройство и создайте новое.</Text></Modal>
   <LivePanel open={liveOpen} onClose={()=>setLiveOpen(false)} status={live}/>
   {scenarioEditorOpen && <ScenarioEditor scenario={scenarioEdit} devices={devices} onClose={()=>setScenarioEditorOpen(false)} onSaved={()=>{setScenarioEditorOpen(false);setScenarioEdit(null);refresh();setPage('scenarios');}}/>}
   </Layout>;
@@ -206,32 +201,44 @@ function LivePanel({open,onClose,status}:{open:boolean;onClose:()=>void;status:a
   return <Drawer title="Интеграция Ujin · LIVE" width={500} open={open} onClose={onClose}><Alert type={status.configured?'success':'info'} showIcon message={status.configured?'Доступы заданы':'Работаем в LOCAL'} description={status.message}/><Form layout="vertical" style={{marginTop:22}}><Form.Item label="Серийный номер устройства"><Input value={serial} onChange={e=>setSerial(e.target.value)} placeholder="Серийный номер из Ujin"/></Form.Item><Space style={{width:'100%'}}><Button onClick={read} loading={busy} disabled={!serial||!status.configured}>Прочитать устройство</Button></Space><Divider>Отправить команду</Divider><Form.Item label="Параметр устройства"><Input value={signal} onChange={e=>setSignal(e.target.value)} placeholder="Название параметра в Ujin"/></Form.Item><Form.Item label="Значение"><Input value={value} onChange={e=>setValue(e.target.value)}/></Form.Item><Button type="primary" onClick={send} loading={busy} disabled={!serial||!signal||!status.configured}>Отправить команду</Button></Form>{readDone&&<Alert type="success" showIcon message="Данные устройства получены"/>}</Drawer>
 }
 
-function Dashboard({devices,scenarios,logs,onOpen,onCreate}:{devices:Device[];scenarios:Scenario[];logs:any[];onOpen:(id:string)=>void;onCreate:()=>void}) {
-  return <div className="page-wrap"><div className="hero"><div><Tag color="cyan">SMART BUILDING SIMULATOR</Tag><Title level={2}>Контроль пространства</Title><Text type="secondary">Управляйте виртуальными устройствами и собирайте автоматизации в одном контуре.</Text></div><div className="hero-orb"><div className="orb-grid"/><BulbOutlined/></div></div><Row gutter={[16,16]} className="stats"><Col xs={12} md={6}><Metric label="Устройства" value={devices.length} hint="в локальной сети" icon={<ControlOutlined/>}/></Col><Col xs={12} md={6}><Metric label="Сценарии" value={scenarios.length} hint={`${scenarios.filter(s=>s.enabled).length} активны`} icon={<DeploymentUnitOutlined/>}/></Col><Col xs={12} md={6}><Metric label="Контур" value="LOCAL" hint="работает автономно" icon={<ApiOutlined/>}/></Col><Col xs={12} md={6}><Metric label="События" value={logs.length} hint="в журнале исполнения" icon={<ThunderboltOutlined/>}/></Col></Row><div className="section-head"><div><Title level={4}>Устройства</Title><Text type="secondary">Быстрый доступ к текущему состоянию</Text></div><Button type="primary" icon={<PlusOutlined/>} onClick={()=>onOpen('leak_1')}>Открыть демо</Button></div><Row gutter={[14,14]}>{devices.slice(0,6).map(d=><Col xs={24} sm={12} xl={8} key={d.id}><DeviceCard device={d} onClick={()=>onOpen(d.id)}/></Col>)}</Row><div className="section-head"><div><Title level={4}>Журнал событий</Title><Text type="secondary">Обновляется в реальном времени</Text></div></div><LogList logs={logs.slice(0,5)} scenarios={scenarios}/></div>
+function Dashboard({devices,scenarios,logs,onOpen,onCreate,onDelete}:{devices:Device[];scenarios:Scenario[];logs:any[];onOpen:(id:string)=>void;onCreate:()=>void;onDelete:(device:Device)=>void}) {
+  return <div className="page-wrap"><div className="hero"><div><Title level={2}>Контроль пространства</Title><Text type="secondary">Управляйте виртуальными устройствами на расстоянии.</Text></div><div className="hero-orb"><div className="orb-grid"/><BulbOutlined/></div></div><Row gutter={[16,16]} className="stats"><Col xs={12} md={6}><Metric label="Устройства" value={devices.length} hint="в локальной сети" icon={<ControlOutlined/>}/></Col><Col xs={12} md={6}><Metric label="Сценарии" value={scenarios.length} hint={`${scenarios.filter(s=>s.enabled).length} активны`} icon={<DeploymentUnitOutlined/>}/></Col><Col xs={12} md={6}><Metric label="Контур" value="LOCAL" hint="работает автономно" icon={<ApiOutlined/>}/></Col><Col xs={12} md={6}><Metric label="События" value={logs.length} hint="в журнале исполнения" icon={<ThunderboltOutlined/>}/></Col></Row><div className="section-head"><div><Title level={4}>Устройства</Title><Text type="secondary">Быстрый доступ к текущему состоянию</Text></div><Button type="primary" icon={<PlusOutlined/>} onClick={onCreate}>Создать устройство</Button></div><Row gutter={[14,14]}>{devices.slice(0,6).map(d=><Col xs={24} sm={12} xl={8} key={d.id}><DeviceCard device={d} onClick={()=>onOpen(d.id)} onDelete={d.user_created?onDelete:undefined}/></Col>)}</Row><div className="section-head"><div><Title level={4}>Журнал событий</Title><Text type="secondary">Обновляется в реальном времени</Text></div></div><LogList logs={logs.slice(0,5)} scenarios={scenarios}/></div>
 }
 function Metric({label,value,hint,icon}:{label:string;value:any;hint:string;icon:any}){return <Card className="metric-card"><div className="metric-icon">{icon}</div><Text type="secondary">{label}</Text><div className="metric-number">{value}</div><small>{hint}</small></Card>}
-function DeviceCard({device,onClick}:{device:Device;onClick:()=>void}){
+function DeviceCard({device,onClick,onDelete}:{device:Device;onClick:()=>void;onDelete?:(device:Device)=>void}){
   const signal=getPrimarySignal(device);
   const status=signal?formatSignalValue(signal,device.state[signal.name]):'Нет данных';
   return <Card hoverable className="device-card" onClick={onClick}>
-    <div className="card-top"><span className="device-glyph"><IconFor model={device.model}/></span><Tag bordered={false} color="green">В сети</Tag></div>
+    <div className="card-top"><span className="device-glyph"><IconFor device={device}/></span><Space size={8}>{onDelete&&device.user_created&&<Button className="device-card-delete" size="small" danger icon={<DeleteOutlined/>} aria-label={`Удалить ${device.title}`} title="Удалить устройство" onClick={event=>{event.stopPropagation();onDelete(device);}}/>}<Tag bordered={false} color="green">В сети</Tag></Space></div>
     <Title level={5} className="device-card-title">{device.title}</Title>
     <div className="device-primary-state">{status}</div>
     <div className="card-action">Открыть панель <span>↗</span></div>
   </Card>;
 }
-function IconFor({model}:{model:string}){return model.includes('leak')?<span>⌁</span>:model.includes('light')?<BulbOutlined/>:model.includes('thermostat')?<span>°</span>:model.includes('barrier')?<span>⌑</span>:<ThunderboltOutlined/>}
+function IconFor({device}:{device:Device}){
+  const type=device.type||device.model;
+  const icon=type.includes('light')?<BulbOutlined/>:
+    type.includes('leak')?<ApiOutlined/>:
+    type.includes('thermostat')?<span className="device-icon-text">°</span>:
+    type.includes('barrier')?<ControlOutlined/>:
+    type.includes('valve')?<ApiOutlined/>:
+    type.includes('motion')?<DeploymentUnitOutlined/>:
+    type.includes('counter')?<ThunderboltOutlined/>:
+    type.includes('elevator')?<AppstoreOutlined/>:<ThunderboltOutlined/>;
+  return <span className="device-neon-icon">{icon}</span>;
+}
 function DevicesPage({devices,selected,onOpen,onBack,onCommand,onSimulate,onBuild,onEditDevice,onDeleteDevice}:{devices:Device[];selected:Device|null;onOpen:(id:string)=>void;onBack:()=>void;onCommand:(d:Device,s:Signal,v:any)=>void;onSimulate:(d:Device,v:number)=>void;onBuild:()=>void;onEditDevice:(d:Device)=>void;onDeleteDevice:(d:Device)=>void}){
-  if(!selected)return <div className="page-wrap"><div className="section-head page-title"><div><Title level={2}>Устройства</Title><Text type="secondary">Состояния и управление устройствами</Text></div><Button type="primary" icon={<PlusOutlined/>} onClick={onBuild}>Создать устройство</Button></div><Row gutter={[14,14]}>{devices.map(d=><Col xs={24} sm={12} xl={8} key={d.id}><DeviceCard device={d} onClick={()=>onOpen(d.id)}/></Col>)}</Row></div>;
-  const groupsOrder=['property','capability','setting'];
-  return <div className="page-wrap"><Button type="link" onClick={onBack}>← Все устройства</Button><div className="device-detail-head"><div><Tag color="green">В сети</Tag><Title level={2}>{selected.title}</Title></div><Space wrap>{selected.model==='emul_leak_sensor'&&<><Button onClick={()=>onSimulate(selected,1)}>Сымитировать протечку</Button><Button onClick={()=>onSimulate(selected,0)}>Осушить датчик</Button></>}{selected.model==='generic_device'&&<><Button icon={<ToolOutlined/>} onClick={()=>onEditDevice(selected)}>Изменить устройство</Button><Button danger icon={<DeleteOutlined/>} onClick={()=>onDeleteDevice(selected)}>Удалить</Button></>}</Space></div><Row gutter={16}><Col xs={24} xl={17}>{groupsOrder.map(group=>{const sigs=getVisibleSignals(selected).filter(s=>s.group===group);if(!sigs.length)return null;return <section className="signal-section" key={group}><div className="section-head"><Title level={4}>{groups[group]}</Title><Text type="secondary">{sigs.length} параметров</Text></div><Row gutter={[12,12]}>{sigs.map(s=><Col xs={24} md={12} key={s.name}><SignalCard device={selected} signal={s} value={selected.state[s.name]} onCommand={onCommand}/></Col>)}</Row></section>})}</Col><Col xs={24} xl={7}><Card className="detail-side"><Title level={5}>Сведения</Title><Descriptions column={1} size="small"><Descriptions.Item label="Название">{selected.title}</Descriptions.Item><Descriptions.Item label="Параметров">{getVisibleSignals(selected).length}</Descriptions.Item><Descriptions.Item label="Подключение">Локальное</Descriptions.Item></Descriptions></Card></Col></Row></div>
+  if(!selected)return <div className="page-wrap"><div className="section-head page-title"><div><Title level={2}>Устройства</Title><Text type="secondary">Состояния и управление устройствами</Text></div><Button type="primary" icon={<PlusOutlined/>} onClick={onBuild}>Создать устройство</Button></div><Row gutter={[14,14]}>{devices.map(d=><Col xs={24} sm={12} xl={8} key={d.id}><DeviceCard device={d} onClick={()=>onOpen(d.id)} onDelete={d.user_created?onDeleteDevice:undefined}/></Col>)}</Row></div>;
+  const visible=getVisibleSignals(selected);
+  const sections=[...new Set(visible.map(s=>s.section || groups[s.group] || 'Сведения'))];
+  return <div className="page-wrap"><Button type="link" onClick={onBack}>← Все устройства</Button><div className="device-detail-head"><div><Tag color="green">В сети</Tag><Title level={2}>{selected.title}</Title></div><Space wrap>{['leak','motion_sensor'].includes(selected.type||'')&&<Button onClick={()=>onSimulate(selected,1)}>{selected.type==='leak'?'Сымитировать протечку':'Сымитировать движение'}</Button>}{['leak','motion_sensor'].includes(selected.type||'')&&<Button onClick={()=>onSimulate(selected,0)}>Сбросить датчик</Button>}{selected.user_created&&<><Button onClick={()=>{onEditDevice(selected);}}>Изменить название</Button><Button danger icon={<DeleteOutlined/>} onClick={()=>onDeleteDevice(selected)}>Удалить</Button></>}</Space></div><Row gutter={16}><Col xs={24} xl={17}>{sections.map(section=>{const sigs=visible.filter(s=>(s.section || groups[s.group] || 'Сведения')===section);if(!sigs.length)return null;return <section className="signal-section" key={section}><div className="section-head"><Title level={4}>{section}</Title></div><Row gutter={[12,12]}>{sigs.map(s=><Col xs={24} md={12} key={s.name}><SignalCard device={selected} signal={s} value={selected.state[s.name]} onCommand={onCommand}/></Col>)}</Row></section>})}</Col><Col xs={24} xl={7}><Card className="detail-side"><Title level={5}>Сведения</Title><Descriptions column={1} size="small"><Descriptions.Item label="Название">{selected.title}</Descriptions.Item><Descriptions.Item label="Тип">{selected.preset_title || selected.title}</Descriptions.Item><Descriptions.Item label="Возможностей">{visible.length}</Descriptions.Item><Descriptions.Item label="Подключение">Локальное</Descriptions.Item></Descriptions></Card></Col></Row></div>
 }
 function SignalCard({device,signal,value,onCommand}:{device:Device;signal:Signal;value:any;onCommand:(d:Device,s:Signal,v:any)=>void}){
   const writable=['rw','w'].includes(signal.management);
   const [rangeValue,setRangeValue]=useState(Number.isFinite(Number(value))?Number(value):0);
   useEffect(()=>{setRangeValue(Number.isFinite(Number(value))?Number(value):0);},[value]);
   let editor:any=null;
-  const opts=signal.layout?Object.keys(signal.layout).map(v=>({value:Number(v),label:formatSignalValue(signal,v)})):[];
+  const opts=signal.layout?Object.keys(signal.layout).filter(v=>signal.control!=='combolist'||Number(v)>0).map(v=>({value:Number(v),label:formatSignalValue(signal,v)})):[];
   if(writable){
     if(signal.control==='switch') editor=<Space><Switch checked={!!Number(value)} onChange={v=>onCommand(device,signal,v?1:0)}/><Text>{formatSignalValue(signal,value)}</Text></Space>;
     else if(signal.control==='range') editor=<div className="range-control"><Slider min={signal.min??0} max={signal.max??100} value={rangeValue} onChange={setRangeValue} onChangeComplete={v=>onCommand(device,signal,v)}/><Text>{formatSignalValue(signal,rangeValue)}</Text></div>;
@@ -249,67 +256,15 @@ function ScenarioPage({scenarios,devices,logs,onEdit,onRefresh}:{scenarios:Scena
   return <div className="page-wrap"><div className="section-head page-title"><div><Title level={2}>Сценарии</Title><Text type="secondary">Выберите событие, при необходимости добавьте проверку и задайте действие.</Text></div><Space><Button icon={<QuestionCircleOutlined/>} onClick={()=>setHelpOpen(true)}>Как это работает</Button><Button type="primary" icon={<PlusOutlined/>} onClick={()=>onEdit(null)}>Новый сценарий</Button></Space></div><Row gutter={16}><Col xs={24} xl={15}><Space direction="vertical" size={12} style={{width:'100%'}}>{scenarios.length?scenarios.map(s=><Card className="scenario-card" key={s.id}><div className="scenario-row"><div><Text type="secondary" className="micro">{s.execution_mode==='live'?'ПЛАТФОРМА UJIN':'ЛОКАЛЬНЫЙ СЦЕНАРИЙ'}</Text><Title level={5}>{s.title}</Title><Text>{scenarioSummary(s,devices)}</Text></div><Space wrap><Switch checked={s.enabled} onChange={()=>toggle(s)} checkedChildren="Вкл" unCheckedChildren="Выкл"/><Button onClick={()=>test(s)}>Проверить</Button><Button onClick={()=>onEdit(s)}>Изменить</Button><Button onClick={async()=>{try{await request<any>(`/live/scenarios/${s.id}/deploy`,{method:'POST'});notification.success({message:'Сценарий отправлен в Ujin'});}catch(e:any){notification.error({message:'LIVE недоступен',description:e.message})}}}>В LIVE</Button></Space></div><div className="flow-summary"><Tag color="blue">КОГДА</Tag><span>⟶</span>{(s.condition||s.conditions?.length)&&<><Tag color="gold">ЕСЛИ</Tag><span>⟶</span></>}<Tag color="green">ТОГДА</Tag><span className="flow-line"/></div></Card>):<EmptyCard title="Пока нет сценариев" description="Создайте первое правило автоматизации." onClick={()=>onEdit(null)}/>}</Space></Col><Col xs={24} xl={9}><Card className="log-card"><div className="section-head"><div><Title level={4}>Выполнение</Title><Text type="secondary">Последние события автоматизаций</Text></div><Tag color="cyan">ЖУРНАЛ</Tag></div><LogList logs={logs.slice(0,18)} scenarios={scenarios}/></Card></Col></Row><HelpDrawer open={helpOpen} onClose={()=>setHelpOpen(false)} kind="scenario"/></div>
 }
 function scenarioSummary(s:Scenario,devices:Device[]){return formatScenarioHumanReadable(s.trigger,s.condition||s.conditions?.[0]||null,s.action||s.actions?.[0],devices);}
-function scenarioUsesDevice(scenario:Scenario,deviceId:string){const parts=[scenario.trigger,scenario.condition,...(scenario.conditions||[]),scenario.action,...(scenario.actions||[])].filter(Boolean);return parts.some(part=>part.device_id===deviceId);}
 function LogList({logs,scenarios=[]}:{logs:any[];scenarios?:Scenario[]}){return <div className="log-list">{logs.length?logs.map((l,i)=><div className="log-row" key={`${l.time}-${i}`}><i className={`log-dot ${l.node_id||l.status||''}`}/><div><b>{l.message||l.status||'Событие'}</b><small>{new Date(l.time).toLocaleTimeString('ru-RU')} · {scenarios.find(s=>s.id===l.scenario_id)?.title||'Автоматизация'}</small></div></div>):<Text type="secondary">Событий пока нет</Text>}</div>}
 function EmptyCard({title,description,onClick}:{title:string;description:string;onClick:()=>void}){return <Card className="empty-card"><div>⌘</div><Title level={4}>{title}</Title><Text type="secondary">{description}</Text><br/><Button type="primary" onClick={onClick}>Создать</Button></Card>}
-function BuilderLanding({onOpen,onDeviceOpen,devices}:{onOpen:()=>void;onDeviceOpen:(id:string)=>void;devices:Device[]}){const [helpOpen,setHelpOpen]=useState(false);const customDevices=devices.filter(d=>d.model==='generic_device');return <div className="page-wrap"><div className="section-head page-title"><div><Title level={2}>Конструктор устройств</Title><Text type="secondary">Добавьте виртуальную модель с параметрами без написания кода.</Text></div><Space><Button icon={<QuestionCircleOutlined/>} onClick={()=>setHelpOpen(true)}>Как это работает</Button><Button type="primary" icon={<PlusOutlined/>} onClick={onOpen}>Создать устройство</Button></Space></div>{customDevices.length>0&&<Row gutter={[12,12]}>{customDevices.map(d=><Col xs={24} md={8} key={d.id}><DeviceCard device={d} onClick={()=>onDeviceOpen(d.id)}/></Col>)}</Row>}{customDevices.length===0&&<EmptyCard title="Создайте устройство под свой сценарий" description="Добавленные устройства появятся здесь и будут доступны в автоматизациях." onClick={onOpen}/>}<HelpDrawer open={helpOpen} onClose={()=>setHelpOpen(false)} kind="device"/></div>}
-
-const newParameter = (index: number): Parameter => ({name:`parameter_${index+1}`,title:'',control:'switch',management:'rw',kind:'capability',value:0});
-const presets: {label:string;description:string;parameter:Parameter}[] = [
-  {label:'Переключатель',description:'Например, свет или реле',parameter:{name:'lamp',title:'Свет',control:'switch',management:'rw',kind:'capability',value:0}},
-  {label:'Датчик температуры',description:'Показание в градусах',parameter:{name:'temperature',title:'Температура',control:'number',management:'r',kind:'property',value:20,measure:'°C',min:-20,max:80}},
-  {label:'Счётчик',description:'Накопительное показание',parameter:{name:'total',title:'Счётчик',control:'counter',management:'r',kind:'property',value:0,measure:'ед.'}},
-  {label:'Команда',description:'Например, открыть заслонку',parameter:{name:'open',title:'Открыть',control:'push_time',management:'w',kind:'capability',value:0}},
-];
-const controlOptions = Object.entries(typeLabels).filter(([key])=>key!=='graph'&&key!=='button').map(([value,label])=>({value,label}));
-
-function HelpDrawer({open,onClose,kind}:{open:boolean;onClose:()=>void;kind:'scenario'|'device'}){
-  const scenario=kind==='scenario';
-  return <Drawer title={scenario?'Как создать сценарий':'Как создать виртуальное устройство'} width={440} open={open} onClose={onClose}>
-    {scenario?<><Typography.Paragraph>Сценарий связывает событие и действие простыми правилами.</Typography.Paragraph><ol><li><b>Когда</b> — выберите событие, которое запускает автоматизацию.</li><li><b>Если</b> — при необходимости добавьте дополнительную проверку.</li><li><b>Тогда</b> — выберите действие системы.</li></ol><Alert type="info" showIcon message="Например" description="Когда датчик движения обнаружит человека, если темно, включить свет."/></>:<><Typography.Paragraph>Виртуальное устройство состоит из параметров, которые оно сообщает или которыми управляет.</Typography.Paragraph><ul><li><b>Показание</b> — устройство сообщает значение, например температуру.</li><li><b>Состояние</b> — его можно прочитать, например включён ли свет.</li><li><b>Управление</b> — действие, например включить свет.</li><li><b>Настройка</b> — значение конфигурации, например целевая температура.</li></ul><Alert type="info" showIcon message="Параметры устройства" description="Имена и значения параметров настраиваются внутри конструктора."/></>}
-  </Drawer>;
-}
-
-function DeviceBuilder({open,device,onClose,onDone}:{open:boolean;device:Device|null;onClose:()=>void;onDone:(deviceId?:string)=>void}){
-  const [title,setTitle]=useState('');const [rows,setRows]=useState<Parameter[]>([]);const [helpOpen,setHelpOpen]=useState(false);
-  useEffect(()=>{if(!open)return;setTitle(device?.title||'');setRows(device?getVisibleSignals(device).map(signal=>({...signal,value:device.state[signal.name]??0})):[]);},[device,open]);
-  const update=(index:number,patch:Partial<Parameter>)=>setRows(current=>current.map((row,i)=>i===index?{...row,...patch}:row));
-  const add=(parameter?:Parameter)=>setRows(current=>{const row=parameter?{...parameter}:{...newParameter(current.length)};if(current.some(item=>item.name===row.name))row.name=`${row.name}_${current.length+1}`;return [...current,row];});
-  const optionsText=(row:Parameter)=>Object.values(row.layout||{}).join(', ');
-  const save=async()=>{
-    if(!title.trim()||!rows.length||rows.some(row=>!row.title.trim()||!row.name.trim())){
-      notification.warning({message:'Заполните название устройства и параметры'});
-      return;
-    }
-    const signals=rows.map(row=>({
-      ...row,
-      title:row.title.trim(),
-      layout:row.control==='list'
-        ?Object.fromEntries(optionsText(row).split(',').map(v=>v.trim()).filter(Boolean).map((v,i)=>[i,v]))
-        :row.layout,
-    }));
-    try{
-      await request(device?`/generic-devices/${device.id}`:'/generic-devices',{method:device?'PUT':'POST',body:JSON.stringify({title:title.trim(),signals})});
-      notification.success({message:device?'Изменения сохранены':'Устройство создано'});
-      onDone(device?.id);
-      onClose();
-    }catch(e:any){
-      notification.error({message:'Не удалось создать устройство',description:e.message});
-    }
-  };
-  return <Drawer title={device?'Изменить виртуальное устройство':'Новое виртуальное устройство'} width={620} open={open} onClose={onClose} extra={<Button type="primary" onClick={save} disabled={!title.trim()||!rows.length||rows.some(row=>!row.title.trim()||!row.name.trim())}>{device?'Сохранить изменения':'Сохранить'}</Button>}>
-    <div className="builder-step"><span>1</span><div><b>Название</b><small>Как устройство будет называться в приложении.</small></div><Button type="text" icon={<QuestionCircleOutlined/>} onClick={()=>setHelpOpen(true)}>Как это работает</Button></div>
-    <Form layout="vertical"><Form.Item label="Название устройства" required><Input size="large" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Например, Лампа в гостиной"/></Form.Item></Form>
-    <div className="builder-explainer"><InfoCircleOutlined/><div><b>Параметры устройства</b><p>Параметр — это показание, состояние или команда. Например, температура, включённый свет или команда «Открыть».</p></div></div>
-    <div className="builder-presets"><Text strong>Добавить пример</Text><div>{presets.map(p=><Tooltip key={p.label} title={p.description}><Button size="small" onClick={()=>add(p.parameter)}>＋ {p.label}</Button></Tooltip>)}</div></div>
-    <div className="section-head builder-section-head"><div><Title level={4}>Параметры</Title><Text type="secondary">{rows.length ? `Добавлено: ${rows.length}` : 'Добавьте первый параметр'}</Text></div></div>
-    {!rows.length?<div className="parameter-empty"><div className="parameter-empty-icon">＋</div><b>У устройства пока нет параметров</b><p>Добавьте показание, состояние или команду, чтобы использовать устройство в сценариях.</p><Button type="primary" ghost icon={<PlusOutlined/>} onClick={()=>add()}>Добавить первый параметр</Button></div>:rows.map((row,index)=><Card key={index} className="parameter-card"><div className="parameter-card-heading"><div><Text type="secondary">ПАРАМЕТР {index+1}</Text><b>{row.title||'Новый параметр'}</b></div><Button danger type="text" icon={<DeleteOutlined/>} aria-label="Удалить параметр" onClick={()=>setRows(current=>current.filter((_,i)=>i!==index))}/></div>
-      <Form layout="vertical"><Row gutter={12}><Col span={24}><Form.Item label="Название параметра"><Input value={row.title} placeholder="Например, Свет" onChange={e=>update(index,{title:e.target.value})}/></Form.Item></Col><Col xs={24} md={12}><Form.Item label="Роль параметра" extra={roleHelp[row.kind]}><Select value={row.kind} onChange={kind=>update(index,{kind,management:kind==='property'?'r':'rw'})} options={[{value:'property',label:'Показание или состояние'},{value:'capability',label:'Управление устройством'},{value:'setting',label:'Настройка устройства'}]}/></Form.Item></Col><Col xs={24} md={12}><Form.Item label="Тип значения" extra={controlHelp[row.control]}><Select value={row.control} onChange={control=>update(index,{control,min:control==='range'?(row.min??0):row.min,max:control==='range'?(row.max??100):row.max,layout:control==='list'?(row.layout||{0:'Вариант 1',1:'Вариант 2'}):row.layout})} options={controlOptions}/></Form.Item></Col><Col span={24}><Form.Item label="Кто может менять значение?" extra={accessHelp[row.management]}><Select value={row.management} onChange={management=>update(index,{management})} options={Object.entries(accessLabels).map(([value,label])=>({value,label}))}/></Form.Item></Col></Row></Form>
-      <Collapse ghost items={[{key:'advanced',label:<span className="advanced-label">Дополнительные настройки</span>,children:<Row gutter={12}>{['number','range','counter'].includes(row.control)&&<><Col span={12}><Form.Item label="Единица измерения"><Input value={row.measure||''} onChange={e=>update(index,{measure:e.target.value})} placeholder="°C, %, кВт·ч"/></Form.Item></Col><Col span={12}><Form.Item label="Минимум и максимум"><Space.Compact block><InputNumber value={row.min} placeholder="Мин." onChange={min=>update(index,{min:min??undefined})}/><InputNumber value={row.max} placeholder="Макс." onChange={max=>update(index,{max:max??undefined})}/></Space.Compact></Form.Item></Col></>}{row.control==='list'&&<Col span={24}><Form.Item label="Варианты списка"><Input value={optionsText(row)} onChange={e=>update(index,{layout:Object.fromEntries(e.target.value.split(',').map(v=>v.trim()).filter(Boolean).map((v,i)=>[i,v]))})} placeholder="Автоматический, Ручной, Выключен"/></Form.Item></Col>}</Row>}]} />
-    </Card>)}
-    {rows.length>0&&<Button className="add-parameter" block icon={<PlusOutlined/>} onClick={()=>add()}>Добавить параметр</Button>}
-    <HelpDrawer open={helpOpen} onClose={()=>setHelpOpen(false)} kind="device"/>
-  </Drawer>;
+function DevicePresetFlow({open,onClose,onDone}:{open:boolean;onClose:()=>void;onDone:(id?:string)=>void}){
+  const [presets,setPresets]=useState<DevicePreset[]>([]);const [selected,setSelected]=useState<DevicePreset|null>(null);const [title,setTitle]=useState('');const [loading,setLoading]=useState(false);
+  useEffect(()=>{if(!open)return;setSelected(null);setTitle('');request<DevicePreset[]>('/device-presets').then(setPresets).catch((e:any)=>notification.error({message:'Не удалось загрузить типы устройств',description:e.message}));},[open]);
+  const add=async()=>{if(!selected||title.trim().length<2)return;setLoading(true);try{const created=await request<Device>('/devices',{method:'POST',body:JSON.stringify({type:selected.type,title:title.trim()})});notification.success({message:'Устройство добавлено',description:`${selected.title} «${created.title}» доступен в сценариях.`});onDone(created.id);}catch(e:any){notification.error({message:'Не удалось добавить устройство',description:e.message});}finally{setLoading(false)}};
+  return <Modal open={open} onCancel={onClose} footer={null} width={820} destroyOnClose title={selected?'Добавление устройства':'Какое устройство вы хотите добавить?'} className="preset-modal">
+    {!selected?<><Text type="secondary">Выберите тип — возможности и настройки уже подготовлены.</Text><Row gutter={[14,14]} style={{marginTop:20}}>{presets.map(p=><Col xs={24} sm={12} md={6} key={p.type}><Card hoverable className="preset-choice" onClick={()=>{setSelected(p);setTitle(p.title);}}><span className="preset-icon">{p.icon}</span><Title level={5}>{p.title}</Title><Text type="secondary">{p.description}</Text></Card></Col>)}</Row></>:<><div className="preset-selected"><span className="preset-icon">{selected.icon}</span><div><Text type="secondary">Тип устройства</Text><Title level={4}>{selected.title}</Title></div></div><Form layout="vertical" style={{marginTop:20}}><Form.Item label="Название" required><Input size="large" maxLength={80} value={title} onChange={e=>setTitle(e.target.value)} placeholder={`Например, ${selected.title.toLocaleLowerCase('ru-RU')} в прихожей`}/></Form.Item></Form><Title level={5}>Что умеет устройство</Title><Row gutter={[20,10]}>{Object.entries(selected.features).map(([group,features])=><Col xs={24} sm={12} key={group}><div className="preset-feature-group"><Text strong>{group}</Text>{features.map(feature=><div className="preset-feature" key={feature}><span>✓</span>{feature}</div>)}</div></Col>)}</Row><div className="preset-actions"><Button onClick={()=>{setSelected(null);setTitle('');}}>Назад</Button><Button type="primary" loading={loading} disabled={title.trim().length<2} onClick={add}>Добавить устройство</Button></div></>}
+  </Modal>;
 }
 
 function makeGraph(hasCondition:boolean):{nodes:Node[];edges:Edge[]}{
@@ -323,9 +278,14 @@ function normalizeGraphLabels(graph:Node[],hasCondition:boolean){
 }
 function isValueValid(signal:Signal|undefined,value:any){
   if(!signal||value===undefined||value===null||value==='')return false;
+  if(signal.event_title&&isCommandSignal(signal))return true;
   if(isNumericSignal(signal)){const n=Number(value);return Number.isFinite(n)&&(signal.min===undefined||n>=signal.min)&&(signal.max===undefined||n<=signal.max);}
   if(isEnumSignal(signal))return Object.prototype.hasOwnProperty.call(signal.layout,String(value));
   return true;
+}
+
+function HelpDrawer({open,onClose,kind}:{open:boolean;onClose:()=>void;kind:'scenario'|'device'}){
+  return <Drawer title="Как создать сценарий" width={440} open={open} onClose={onClose}><Typography.Paragraph>Сценарий связывает событие и действие простыми правилами.</Typography.Paragraph><ol><li><b>Когда</b> — выберите событие, которое запускает автоматизацию.</li><li><b>Если</b> — при необходимости добавьте дополнительную проверку.</li><li><b>Тогда</b> — выберите действие системы.</li></ol><Alert type="info" showIcon message="Например" description="Когда датчик движения обнаружит движение, включить свет."/></Drawer>;
 }
 
 function ScenarioEditor({scenario,devices,onClose,onSaved}:{scenario:Scenario|null;devices:Device[];onClose:()=>void;onSaved:()=>void}){
@@ -397,10 +357,12 @@ function DeviceSelect({devices,value,onChange}:{devices:Device[];value:string;on
 }
 function SignalSelect({device,context,value,onChange,disabled}:{device?:Device;context:SignalContext;value:string;onChange:(value:string)=>void;disabled:boolean}){
   const signals=getAvailableSignals(device,context);
-  const groups=[{label:context==='action'?'Доступные действия':'Состояния и показания',options:signals.map(signal=>({value:signal.name,label:signal.title,signal}))}];
-  return <Select allowClear disabled={disabled||!signals.length} placeholder={disabled?'Сначала выберите устройство':'Выберите параметр'} value={value||undefined} onChange={onChange} options={groups} optionLabelProp="label" optionRender={({data}:any)=><div className="signal-option"><b>{data.signal.title}</b><small>{data.signal.description||groups[data.signal.group]||'Параметр устройства'}{data.signal.measure?` · ${data.signal.measure}`:''}</small></div>} showSearch optionFilterProp="label" popupMatchSelectWidth={false} listHeight={280} placement="bottomLeft" getPopupContainer={node=>node.closest('.ant-modal-content')||document.body} popupClassName="scenario-select-popup"/>;
+  const labelFor=(signal:Signal)=>context==='action'?(signal.action_title||signal.title):(context==='trigger'?(signal.event_title||signal.title):signal.title);
+  const groups=[{label:context==='action'?'Доступные действия':'Состояния и показания',options:signals.map(signal=>({value:signal.name,label:labelFor(signal),signal}))}];
+  return <Select allowClear disabled={disabled||!signals.length} placeholder={disabled?'Сначала выберите устройство':context==='action'?'Выберите действие':'Выберите состояние или событие'} value={value||undefined} onChange={onChange} options={groups} optionLabelProp="label" optionRender={({data}:any)=><div className="signal-option"><b>{labelFor(data.signal)}</b><small>{data.signal.description||data.signal.section||'Возможность устройства'}{data.signal.measure?` · ${data.signal.measure}`:''}</small></div>} showSearch optionFilterProp="label" popupMatchSelectWidth={false} listHeight={280} placement="bottomLeft" getPopupContainer={node=>node.closest('.ant-modal-content')||document.body} popupClassName="scenario-select-popup"/>;
 }
 function RuleValueFields({signal,value,operator,onChange,role}:{signal:Signal;value:any;operator:string;onChange:(patch:Partial<Rule>)=>void;role:string}){
+  if(signal.event_title&&isCommandSignal(signal))return <Alert type="info" showIcon message={`Событие «${signal.event_title}» запускает сценарий при каждом срабатывании.`}/>;
   if(isBooleanSignal(signal)||isEnumSignal(signal)){
     const options=isBooleanSignal(signal)?[{value:1,label:/протеч|вода|leak/i.test(`${signal.name} ${signal.title}`)?'Обнаружена':/свет|ламп|light|lamp/i.test(`${signal.name} ${signal.title}`)?'Вкл':'Да'},{value:0,label:/протеч|вода|leak/i.test(`${signal.name} ${signal.title}`)?'Не обнаружена':/свет|ламп|light|lamp/i.test(`${signal.name} ${signal.title}`)?'Выкл':'Нет'}]:Object.keys(signal.layout||{}).map(key=>({value:Number(key),label:formatSignalValue(signal,key)}));
     return <Form.Item label={isBooleanSignal(signal)?'Состояние':'Значение'} validateStatus={!isValueValid(signal,value)?'error':undefined} help={!isValueValid(signal,value)?`Выберите значение ${role}.`:undefined}><Select disabled={!signal} value={value===undefined||value===null?undefined:Number(value)} onChange={v=>onChange({operator:'==',value:v})} options={options}/></Form.Item>;
@@ -411,8 +373,8 @@ function RuleValueFields({signal,value,operator,onChange,role}:{signal:Signal;va
 }
 function ActionValueFields({signal,value,onChange}:{signal:Signal;value:any;onChange:(value:any)=>void}){
   if(isCommandSignal(signal))return <Alert className="command-note" type="success" showIcon message={`Команда «${signal.title}» будет выполнена без дополнительных параметров.`}/>;
-  if(isBooleanSignal(signal))return <Form.Item label={signal.title}><Select value={Number(value)} onChange={onChange} options={[{value:1,label:'Включить'},{value:0,label:'Выключить'}]}/></Form.Item>;
-  if(isEnumSignal(signal))return <Form.Item label={signal.title}><Select value={value===undefined?undefined:Number(value)} onChange={onChange} options={Object.keys(signal.layout||{}).map(v=>({value:Number(v),label:formatSignalValue(signal,v)}))}/></Form.Item>;
+  if(isBooleanSignal(signal))return <Form.Item label={signal.action_title||signal.title}><Select value={Number(value)} onChange={onChange} options={[{value:1,label:signal.action_on||'Включить'},{value:0,label:signal.action_off||'Выключить'}]}/></Form.Item>;
+  if(isEnumSignal(signal))return <Form.Item label={signal.action_title||signal.title}><Select value={value===undefined?undefined:Number(value)} onChange={onChange} options={Object.keys(signal.layout||{}).filter(v=>signal.control!=='combolist'||Number(v)>0).map(v=>({value:Number(v),label:formatSignalValue(signal,v)}))}/></Form.Item>;
   return <Form.Item label={isNumericSignal(signal)?`Установить ${signal.title.toLocaleLowerCase('ru-RU')}`:signal.title} validateStatus={!isValueValid(signal,value)?'error':undefined} help={!isValueValid(signal,value)?`Укажите значение${signal.min!==undefined||signal.max!==undefined?` от ${signal.min??'…'} до ${signal.max??'…'}`:''}.`:undefined}><InputNumber className="action-number" value={value} min={signal.min} max={signal.max} addonAfter={signal.measure||undefined} onChange={v=>onChange(v)} placeholder="Введите значение"/></Form.Item>;
 }
 function NodeConfig({label,accent,children}:{label:string;accent:string;children:any}){return <Card size="small" className={`node-config-card ${accent}`}><Text className="node-label">{label}</Text><Space direction="vertical" style={{width:'100%'}}>{children}</Space></Card>}

@@ -19,7 +19,9 @@ class Elevator(Device):
         self._move_left = 0
         self._door_left = 0
         self.add_signal(Signal("call_requested", "Вызвать (этаж)", "combolist", "w",
-                               "capability", 0, layout={0: "нет"}))
+                               "capability", 0,
+                               layout={0: "Не выбрано", **{floor: str(floor) for floor in range(1, floors + 1)}},
+                               minimum=1, maximum=floors))
         self.add_signal(Signal("floor_current", "Текущий этаж", "counter", "r",
                                "property", 1, "", 1, floors))
         self.add_signal(Signal("floor_destination", "Этаж назначения", "counter", "r",

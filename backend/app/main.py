@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.services.device_manager import DeviceManager
+from app.services.device_presets import PRESETS, get_preset, list_presets
 from app.services.event_bus import EventBus
 from app.services.scenario_engine import ScenarioEngine, compare
 from app.services.scenario_compiler import compile_autoscript
@@ -93,12 +94,36 @@ class GenericBody(BaseModel):
         return self
 
 
+class CreatePresetBody(BaseModel):
+    type: str
+    title: str = Field(min_length=2, max_length=80)
+
+
+class RenameDeviceBody(BaseModel):
+    title: str = Field(min_length=2, max_length=80)
+
+
 def error(status, code, message):
     return HTTPException(status_code=status, detail={"error": {"code": code, "message": message}})
 
 
 def scenario_rows():
     return storage.read("scenarios.json", [])
+
+
+def scenarios_using_device(device_id):
+    affected = []
+    for scenario in scenario_rows():
+        parts = [scenario.get("trigger", {})]
+        parts.extend(scenario.get("conditions", []))
+        if scenario.get("condition"):
+            parts.append(scenario["condition"])
+        parts.extend(scenario.get("actions", []))
+        if scenario.get("action"):
+            parts.append(scenario["action"])
+        if any(part.get("device_id") == device_id for part in parts):
+            affected.append(scenario)
+    return affected
 
 
 def validate_scenario(data):
@@ -149,6 +174,29 @@ async def status():
     return {"mode": "LOCAL", "devices": len(manager.devices), "live": ujin.status()}
 
 
+@app.get("/api/device-presets")
+async def device_presets():
+    return list_presets()
+
+
+@app.get("/api/device-presets/{device_type}")
+async def device_preset(device_type: str):
+    preset = get_preset(device_type)
+    if not preset:
+        raise error(404, "PRESET_NOT_FOUND", "Тип устройства не найден")
+    return preset
+
+
+@app.post("/api/devices")
+async def create_device(body: CreatePresetBody):
+    if body.type not in PRESETS:
+        raise error(400, "INVALID_DEVICE_TYPE", "Выберите тип устройства из списка")
+    try:
+        return manager.create_preset(body.type, body.title.strip())
+    except ValueError as exc:
+        raise error(400, "INVALID_DEVICE", str(exc))
+
+
 @app.get("/api/devices")
 async def devices():
     return manager.list()
@@ -160,6 +208,34 @@ async def device(device_id: str):
         return manager.details(device_id)
     except KeyError:
         raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено")
+
+
+@app.put("/api/devices/{device_id}")
+async def update_device(device_id: str, body: RenameDeviceBody):
+    try:
+        if device_id in manager.user_devices:
+            return manager.update_preset(device_id, body.title.strip())
+        if manager.devices.get(device_id) and manager.devices[device_id].model == "generic_device":
+            return manager.rename_generic(device_id, body.title.strip())
+        raise KeyError(device_id)
+    except KeyError:
+        raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено или его нельзя редактировать")
+
+
+@app.delete("/api/devices/{device_id}")
+async def delete_device(device_id: str):
+    device = manager.devices.get(device_id)
+    if device_id not in manager.user_devices and not (device and device.model == "generic_device"):
+        raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено или его нельзя удалить")
+    affected = scenarios_using_device(device_id)
+    if affected:
+        titles = "», «".join(row.get("title", "Без названия") for row in affected)
+        raise error(409, "DEVICE_IN_USE", f"Устройство используется в сценарии «{titles}». Сначала измените или удалите этот сценарий.")
+    if device_id in manager.user_devices:
+        manager.remove_preset(device_id)
+    else:
+        manager.remove_generic(device_id)
+    return {"ok": True}
 
 
 @app.get("/api/devices/{device_id}/state")
@@ -228,23 +304,12 @@ async def create_generic(body: GenericBody):
 @app.delete("/api/generic-devices/{device_id}")
 async def delete_generic(device_id: str):
     try:
-        scenarios = scenario_rows()
-        affected = []
-        for scenario in scenarios:
-            parts = [scenario.get("trigger", {})]
-            parts.extend(scenario.get("conditions", []))
-            if scenario.get("condition"):
-                parts.append(scenario["condition"])
-            parts.extend(scenario.get("actions", []))
-            if scenario.get("action"):
-                parts.append(scenario["action"])
-            if any(part.get("device_id") == device_id for part in parts):
-                scenario["enabled"] = False
-                affected.append(scenario)
-        manager.remove_generic(device_id)
+        affected = scenarios_using_device(device_id)
         if affected:
-            storage.write("scenarios.json", scenarios)
-        return {"ok": True, "disabled_scenarios": len(affected)}
+            titles = "», «".join(row.get("title", "Без названия") for row in affected)
+            raise error(409, "DEVICE_IN_USE", f"Устройство используется в сценарии «{titles}». Сначала измените или удалите этот сценарий.")
+        manager.remove_generic(device_id)
+        return {"ok": True}
     except KeyError:
         raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено")
 
