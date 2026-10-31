@@ -38,7 +38,7 @@ async def lifespan(_app):
         await manager.stop()
 
 
-app = FastAPI(title="Ujin Smart Lab", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Ujin Smart Home", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
