@@ -4,16 +4,16 @@
     "enabled": true,
     "execution_mode": "local",
     "trigger": {
-      "device_id": "light_1",
-      "signal": "lamp",
-      "operator": "<=",
+      "device_id": "leak_1",
+      "signal": "leak",
+      "operator": "==",
       "value": 1
     },
     "actions": [
       {
         "device_id": "light_1",
         "signal": "lamp",
-        "value": 1
+        "value": 0
       }
     ],
     "graph": {
@@ -22,44 +22,30 @@
           "id": "event",
           "type": "input",
           "position": {
-            "x": 40,
-            "y": 130
+            "x": 35,
+            "y": 54
           },
           "data": {
-            "label": "СОБЫТИЕ"
+            "label": "КОГДА"
           },
           "measured": {
             "width": 150,
-            "height": 41
-          }
-        },
-        {
-          "id": "condition",
-          "position": {
-            "x": 310,
-            "y": 130
-          },
-          "data": {
-            "label": "УСЛОВИЕ"
-          },
-          "measured": {
-            "width": 150,
-            "height": 41
+            "height": 40
           }
         },
         {
           "id": "action",
           "type": "output",
           "position": {
-            "x": 580,
-            "y": 130
+            "x": 390,
+            "y": 54
           },
           "data": {
-            "label": "ДЕЙСТВИЕ"
+            "label": "ТОГДА"
           },
           "measured": {
             "width": 150,
-            "height": 41
+            "height": 40
           }
         }
       ],
@@ -67,15 +53,6 @@
         {
           "id": "e1",
           "source": "event",
-          "target": "condition",
-          "animated": true,
-          "markerEnd": {
-            "type": "arrowclosed"
-          }
-        },
-        {
-          "id": "e2",
-          "source": "condition",
           "target": "action",
           "animated": true,
           "markerEnd": {
@@ -84,14 +61,68 @@
         }
       ]
     },
-    "conditions": [
-      {
-        "device_id": "barrier_1",
-        "signal": "open_cmd",
-        "operator": ">",
-        "value": 20
-      }
-    ],
     "id": "scenario_1"
+  },
+  {
+    "title": "jj",
+    "enabled": false,
+    "execution_mode": "local",
+    "trigger": {
+      "device_id": "barrier_1",
+      "signal": "state",
+      "operator": "==",
+      "value": 2
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "event",
+          "type": "input",
+          "position": {
+            "x": 35,
+            "y": 54
+          },
+          "data": {
+            "label": "КОГДА"
+          },
+          "measured": {
+            "width": 150,
+            "height": 40
+          }
+        },
+        {
+          "id": "action",
+          "type": "output",
+          "position": {
+            "x": 390,
+            "y": 54
+          },
+          "data": {
+            "label": "ТОГДА"
+          },
+          "measured": {
+            "width": 150,
+            "height": 40
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "event",
+          "target": "action",
+          "animated": true,
+          "markerEnd": {
+            "type": "arrowclosed"
+          }
+        }
+      ]
+    },
+    "action": {
+      "device_id": "device_a1c89346",
+      "signal": "state",
+      "value": 1
+    },
+    "id": "scenario_2"
   }
 ]

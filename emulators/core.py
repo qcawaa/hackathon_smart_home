@@ -36,8 +36,8 @@ class Signal:
     @property
     def group(self) -> str:
         """Верхнеуровневая группа для людей: свойство / возможность / настройка."""
-        if self.kind == "setting":
-            return "setting"
+        if self.kind in ("property", "capability", "setting"):
+            return self.kind
         return "capability" if self.writable else "property"
 
     @property

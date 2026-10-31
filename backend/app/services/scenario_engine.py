@@ -47,6 +47,33 @@ class ScenarioEngine:
         del self.logs[100:]
         asyncio.create_task(self.bus.publish({"type": "execution", "item": row}))
 
+    def describe_signal(self, device_id, signal_name, value):
+        """Build a readable log label without exposing protocol identifiers."""
+        try:
+            device = self.manager.get(device_id)
+            signal = device.signals[signal_name]
+        except KeyError:
+            return "Параметр устройства"
+        if signal.control == "switch":
+            try:
+                enabled = float(value) != 0
+            except (TypeError, ValueError):
+                enabled = bool(value)
+            shown = "Вкл" if enabled else "Выкл"
+        elif signal.control in ("push_time", "button"):
+            shown = "Выполнено"
+        elif signal.layout:
+            shown = signal.layout.get(value, signal.layout.get(str(value), value))
+            if "протеч" in signal.title.lower():
+                shown = "Обнаружена" if str(value) == "1" else "Не обнаружена"
+            else:
+                shown = str(shown)
+                shown = shown[:1].upper() + shown[1:]
+        else:
+            shown = value
+        suffix = f" {signal.measure}" if signal.measure and signal.control not in ("push_time", "button") else ""
+        return f"{device.title} · {signal.title}: {shown}{suffix}"
+
     async def _run(self):
         queue = self.bus.subscribe()
         try:
@@ -67,7 +94,7 @@ class ScenarioEngine:
                     self._trigger_active[scenario["id"]] = matched
                     if not matched or previous:
                         continue
-                    self.log(scenario["id"], f"Событие: {event['device_id']}.{event['signal']} = {event.get('value')}", "trigger")
+                    self.log(scenario["id"], f"Событие: {self.describe_signal(event['device_id'], event['signal'], event.get('value'))}", "trigger")
                     conditions = scenario.get("conditions", [])
                     if scenario.get("condition"):
                         conditions = [scenario["condition"], *conditions]
@@ -91,7 +118,7 @@ class ScenarioEngine:
                     try:
                         for action in actions:
                             await self.manager.command(action["device_id"], action["signal"], action["value"])
-                            self.log(scenario["id"], f"{action['device_id']}.{action.get('signal')} ← {action.get('value')}", "action")
+                            self.log(scenario["id"], f"Действие выполнено: {self.describe_signal(action['device_id'], action['signal'], action.get('value'))}", "action")
                         self.log(scenario["id"], "Сценарий выполнен успешно", "success")
                     except (KeyError, ValueError, PermissionError, TypeError) as exc:
                         self.log(scenario["id"], f"Ошибка действия: {exc}", "error")

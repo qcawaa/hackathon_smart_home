@@ -228,8 +228,23 @@ async def create_generic(body: GenericBody):
 @app.delete("/api/generic-devices/{device_id}")
 async def delete_generic(device_id: str):
     try:
+        scenarios = scenario_rows()
+        affected = []
+        for scenario in scenarios:
+            parts = [scenario.get("trigger", {})]
+            parts.extend(scenario.get("conditions", []))
+            if scenario.get("condition"):
+                parts.append(scenario["condition"])
+            parts.extend(scenario.get("actions", []))
+            if scenario.get("action"):
+                parts.append(scenario["action"])
+            if any(part.get("device_id") == device_id for part in parts):
+                scenario["enabled"] = False
+                affected.append(scenario)
         manager.remove_generic(device_id)
-        return {"ok": True}
+        if affected:
+            storage.write("scenarios.json", scenarios)
+        return {"ok": True, "disabled_scenarios": len(affected)}
     except KeyError:
         raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено")
 
