@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.venv/
+venv/
+node_modules/
+.npm-cache/
+frontend/dist/
+backend/.env
+.env
+data/*.tmp
+*.log
+доступы.json
+*.pdf
+/tools/node*/
+/node-lts.zip

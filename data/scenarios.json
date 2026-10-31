@@ -1,0 +1,97 @@
+[
+  {
+    "title": "Протечка → включить свет",
+    "enabled": true,
+    "execution_mode": "local",
+    "trigger": {
+      "device_id": "light_1",
+      "signal": "lamp",
+      "operator": "<=",
+      "value": 1
+    },
+    "actions": [
+      {
+        "device_id": "light_1",
+        "signal": "lamp",
+        "value": 1
+      }
+    ],
+    "graph": {
+      "nodes": [
+        {
+          "id": "event",
+          "type": "input",
+          "position": {
+            "x": 40,
+            "y": 130
+          },
+          "data": {
+            "label": "СОБЫТИЕ"
+          },
+          "measured": {
+            "width": 150,
+            "height": 41
+          }
+        },
+        {
+          "id": "condition",
+          "position": {
+            "x": 310,
+            "y": 130
+          },
+          "data": {
+            "label": "УСЛОВИЕ"
+          },
+          "measured": {
+            "width": 150,
+            "height": 41
+          }
+        },
+        {
+          "id": "action",
+          "type": "output",
+          "position": {
+            "x": 580,
+            "y": 130
+          },
+          "data": {
+            "label": "ДЕЙСТВИЕ"
+          },
+          "measured": {
+            "width": 150,
+            "height": 41
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "e1",
+          "source": "event",
+          "target": "condition",
+          "animated": true,
+          "markerEnd": {
+            "type": "arrowclosed"
+          }
+        },
+        {
+          "id": "e2",
+          "source": "condition",
+          "target": "action",
+          "animated": true,
+          "markerEnd": {
+            "type": "arrowclosed"
+          }
+        }
+      ]
+    },
+    "conditions": [
+      {
+        "device_id": "barrier_1",
+        "signal": "open_cmd",
+        "operator": ">",
+        "value": 20
+      }
+    ],
+    "id": "scenario_1"
+  }
+]
