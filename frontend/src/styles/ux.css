@@ -71,3 +71,11 @@ button,
 }
 
 @media(max-width:640px){.signal-card .ant-card-body{align-items:stretch;flex-direction:column}.signal-control{width:100%;justify-content:flex-start}.range-control{width:100%;max-width:none;min-width:0}}
+
+.quick-scenarios{margin:0 0 24px}
+.quick-scenarios .section-head{margin-top:20px}
+.quick-scenario-card{height:100%;border-color:#25465c;background:linear-gradient(135deg,#102b3e,#0e1c2c)}
+.quick-scenario-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.quick-scenario-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#183e54;color:#75d7ff;font-size:23px}
+.quick-scenario-card .ant-typography{margin-bottom:12px}
+.quick-scenario-card .ant-btn{margin-top:8px}

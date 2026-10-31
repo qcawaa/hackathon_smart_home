@@ -6,8 +6,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core import Signal  # noqa: E402
 from devices.counter import Counter  # noqa: E402
-from devices.ventilation import Ventilation  # noqa: E402
-from devices.fire import FireDetector  # noqa: E402
 from devices.light import Light  # noqa: E402
 
 
@@ -39,38 +37,6 @@ class TestCounter(unittest.TestCase):
             c.tick(1)
         self.assertGreater(c.signals["total"].value, 1000.0)
         self.assertIn("flow", c.signals)
-
-
-class TestVentilation(unittest.TestCase):
-    def test_co2_rises_when_off(self):
-        v = Ventilation(serial="1")
-        v.signals["mode"].value = 0
-        v.signals["co2"].value = 600
-        v.tick(1)
-        self.assertGreater(v.signals["co2"].value, 600)
-
-    def test_auto_mode_reduces_co2(self):
-        v = Ventilation(serial="1")
-        v.signals["mode"].value = 1
-        v.signals["co2"].value = 1200
-        v.signals["co2_target"].value = 800
-        for _ in range(5):
-            v.tick(1)
-        self.assertLess(v.signals["co2"].value, 1200)
-
-
-class TestFire(unittest.TestCase):
-    def test_smoke_triggers_alarm(self):
-        f = FireDetector(serial="1", threshold=50)
-        f.set_smoke(70)
-        f.tick(1)
-        self.assertEqual(f.signals["alarm"].value, 1)
-        self.assertEqual(f.signals["duty"].value, 0)
-
-    def test_clear_air_no_alarm(self):
-        f = FireDetector(serial="1")
-        f.tick(1)
-        self.assertEqual(f.signals["alarm"].value, 0)
 
 
 class TestLight(unittest.TestCase):

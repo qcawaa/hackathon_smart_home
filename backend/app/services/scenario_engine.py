@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import operator
+import uuid
 from datetime import datetime, timezone
 
 
@@ -74,6 +75,47 @@ class ScenarioEngine:
         suffix = f" {signal.measure}" if signal.measure and signal.control not in ("push_time", "button") else ""
         return f"{device.title} · {signal.title}: {shown}{suffix}"
 
+    async def execute_action(self, scenario_id, device_id, signal_name, value):
+        """Выполнить действие и сообщить интерфейсу его фактический результат."""
+        device = self.manager.get(device_id)
+        try:
+            response = await self.manager.command(device_id, signal_name, value)
+        except (KeyError, ValueError, PermissionError, TypeError) as exc:
+            await self.bus.publish({"type": "scenario_action", "id": uuid.uuid4().hex,
+                                    "scenario_id": scenario_id, "device_id": device_id,
+                                    "status": "error", "message": f"{device.title} → {exc}"})
+            raise
+        signal = device.signals[signal_name]
+        actual = response["state"][signal_name]
+        blocked = (device.model == "emul_kettle" and signal_name == "on"
+                   and bool(float(value)) and not actual)
+        if blocked:
+            shown = response.get("command_result") or "Не включён"
+        elif signal.control == "switch":
+            shown = "Вкл" if float(actual) else "Выкл"
+        elif signal.control in ("push_time", "button"):
+            state_name = "opened" if device.model == "emul_curtain" else "state"
+            state_signal = device.signals.get(state_name)
+            state = response["state"].get(state_name)
+            shown = (state_signal.layout or {}).get(state) if state_signal else None
+            shown = shown or response.get("command_result") or signal.title
+        else:
+            shown = (signal.layout or {}).get(actual, actual)
+            if signal.measure:
+                shown = f"{shown} {signal.measure}"
+        shown = str(shown)
+        shown = shown[:1].upper() + shown[1:]
+        label = device.title
+        if signal.control not in ("switch", "push_time", "button"):
+            label += f" · {signal.title}"
+        notice = {"type": "scenario_action", "id": uuid.uuid4().hex,
+                  "scenario_id": scenario_id, "device_id": device_id, "signal": signal_name,
+                  "value": actual, "status": "warning" if blocked else "success",
+                  "message": f"{label} → {shown}"}
+        await self.bus.publish(notice)
+        response["scenario_action"] = notice
+        return response
+
     async def _run(self):
         queue = self.bus.subscribe()
         try:
@@ -121,10 +163,13 @@ class ScenarioEngine:
                         continue
                     actions = scenario.get("actions") or [scenario.get("action", {})]
                     try:
+                        partial = False
                         for action in actions:
-                            await self.manager.command(action["device_id"], action["signal"], action["value"])
-                            self.log(scenario["id"], f"Действие выполнено: {self.describe_signal(action['device_id'], action['signal'], action.get('value'))}", "action")
-                        self.log(scenario["id"], "Сценарий выполнен успешно", "success")
+                            result = await self.execute_action(scenario["id"], action["device_id"], action["signal"], action["value"])
+                            notice = result["scenario_action"]
+                            partial = partial or notice["status"] != "success"
+                            self.log(scenario["id"], notice["message"], "action")
+                        self.log(scenario["id"], "Сценарий выполнен частично" if partial else "Сценарий выполнен успешно", "error" if partial else "success")
                     except (KeyError, ValueError, PermissionError, TypeError) as exc:
                         self.log(scenario["id"], f"Ошибка действия: {exc}", "error")
         finally:

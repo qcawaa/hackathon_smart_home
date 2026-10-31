@@ -10,6 +10,29 @@ from app.services.scenario_engine import ScenarioEngine, compare
 from app.services.storage import Storage
 
 
+@pytest.mark.parametrize("device_type", ["elevator", "hub", "ventilation", "fire", "motion_sensor"])
+def test_removed_device_types_are_unavailable(device_type, tmp_path):
+    from fastapi.testclient import TestClient
+    from app import main as api
+
+    storage = Storage(tmp_path)
+    storage.write("preset_devices.json", [
+        {"id": "removed_1", "type": device_type, "title": "Старое устройство"},
+        {"id": "valve_1", "type": "water_valve", "title": "Клапан кухни"},
+    ])
+    manager = DeviceManager(storage, EventBus())
+    assert "removed_1" not in manager.devices
+    assert manager.details("valve_1")["type"] == "water_valve"
+
+    with pytest.raises(ValueError, match="Неизвестный тип устройства"):
+        manager.create_preset(device_type, "Удалённый тип")
+
+    client = TestClient(api.app)
+    assert device_type not in {row["type"] for row in client.get("/api/device-presets").json()}
+    assert client.get(f"/api/device-presets/{device_type}").status_code == 404
+    assert client.post("/api/devices", json={"type": device_type, "title": "Удалённый тип"}).status_code == 400
+
+
 def test_generic_device_declaration_and_writable_command(tmp_path):
     device = GenericDevice("test_generic", "Тест", [
         {"name": "switch", "title": "Переключатель", "control": "switch",

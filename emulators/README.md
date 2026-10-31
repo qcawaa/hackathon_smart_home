@@ -8,8 +8,8 @@ Python 3.8+, только стандартная библиотека. Сете�
 ## Быстрый старт
 
 ```bash
-# 8 тиков лифта, без сети
-python main.py elevator --ticks 8 --interval 0 --floors 5
+# 8 тиков термостата, без сети
+python main.py thermostat --ticks 8 --interval 0
 
 # завести устройство на стенде и публиковать сигналы вживую
 python main.py thermostat --live --token dev-<serial>-<token> \
@@ -67,18 +67,17 @@ python -c "import ws_client; print(ws_client.fetch_wss_address(
 | `core.py` | `Signal` (declaration: control/management/kind), `Device` (тики, грязные сигналы, `announce`, приём `{"recv":[...]}`), `CommandServer` (+веб-панель `/`, `/state`, `/declaration`, `/command`, `/shutdown`) |
 | `ujin_client.py` | клиент API: import_device (create-update, update/group-update-signal, hide) + autoscripts (signals, edit, list, activate); `dry_run=True` по умолчанию |
 | `devices/leak_sensor.py` | датчик протечки (батарея, тампер, самотест) |
-| `devices/barrier.py` | шлагбаум (авто-закрытие `hold_time`, реверс по препятствию, джем-авария) |
+| `devices/barrier.py` | шлагбаум: одна команда открытия на 10 секунд, автоматическое закрытие |
 | `devices/thermostat.py` | термостат (гистерезис ±0.5, режимы, дрейф к окружающей) |
-| `devices/elevator.py` | лифт (вызовы, движение этаж-за-этажом, `floor_changed`, авария-стоп) |
-| `devices/leak_hub.py` | композит: хаб + 3 внутренних датчика (коммутация вне Ujin) |
 | `devices/counter.py` | **Учёт** (э/в/тепло): тарифы, мощность, реле нагрузки — самый живой класс preprod |
-| `devices/ventilation.py` | **Вентиляция** (приточка): CO2/PM2.5, авто-режим по цели |
-| `devices/fire.py` | **ПОЖС**: задымлённость, порог, тампер, самотест |
 | `devices/light.py` | **Свет/реле**: яркость, энергия, авто-выключение |
+| `devices/water_valve.py` | клапан воды: открытие и закрытие |
+| `devices/kettle.py` | умный чайник: минимум 300 мл, нагрев, автоотключение при кипении |
+| `devices/curtain.py` | умная гардина: команды открытия и закрытия штор |
 | `live_loop.py` | pull-цикл приёма команд платформы (get-device-info → task → исполнение → подтверждение) |
 | `ws_client.py` | WS-клиент по контракту МП (auth/setValue/эхо) + `WsDeviceHub` поверх FSM |
-| `tests/test_devices.py` | 24 теста конечных автоматов, клиента, команды по HTTP |
-| `tests/test_families.py` | 10 тестов новых семейств + групп `signal.group` |
+| `tests/test_devices.py` | тесты конечных автоматов, клиента, команды по HTTP |
+| `tests/test_families.py` | тесты семейств и групп `signal.group` |
 | `tests/test_ws_client.py` | 8 тестов WS-протокола и хаба (офлайн) |
 | `tests/test_client_publish.py` | 3 теста payload'а публикаций (рудимент wire_value) |
 | `tests/test_new_device.py` | 5 тестов генератора new_device.py |
@@ -87,7 +86,7 @@ python -c "import ws_client; print(ws_client.fetch_wss_address(
 | `tests/test_provision_live.py` | 4 теста идемпотентности `--live` (cos/комплы/резиденты, сетьзаглушена) |
 | `tests/test_live_loop.py` | 4 теста дедупа задач pull-цикла (task_dt) |
 
-Итого 71 unittest, все офлайн. Оговорка: живой WS-зонд (`ws_client.probe`)
+Все тесты выполняются офлайн. Оговорка: живой WS-зонд (`ws_client.probe`)
 требует `pip install websockets` — единственная внешняя либа, импортируется
 лениво; ядро и тесты от неё не зависят.
 
@@ -128,3 +127,17 @@ group/диапазоны/layout) — источник для конструкт�
    `on_command()`.
 2. Зарегистрировать в `devices/__init__.py:REGISTRY` (генератор делает это сам).
 3. Тест — конечный автомат без сети (см. `tests/test_devices.py`).
+
+## Чайник и гардина
+
+`python main.py kettle --port 8099` — чайник: `water_ml` задаёт объём
+воды в эмуляторе (0–2000 мл), `on=1` включает нагрев. При объёме меньше
+300 мл нагрев заблокирован и отключается, если воду убрали во время работы.
+При достижении 100 °C чайник выключается; выключенная вода остывает.
+
+`python main.py curtain --port 8100` — гардина: `open_cmd=1` открывает шторы,
+`close_cmd=1` закрывает. Сигнал `opened` показывает положение (0 — закрыты,
+1 — открыты). Обе команды доступны в сценариях.
+
+В приложении оба типа доступны в каталоге, а по одному устройству каждого
+типа создаётся при первом запуске. Объём воды можно менять в карточке чайника.

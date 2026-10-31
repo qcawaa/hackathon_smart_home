@@ -1,7 +1,7 @@
 [
   {
-    "id": "motion_sensor_c266c66e",
-    "type": "motion_sensor",
-    "title": "Датчик движения"
+    "id": "water_valve_8f0cfbe0",
+    "type": "water_valve",
+    "title": "Клапан воды"
   }
 ]

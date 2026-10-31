@@ -1,77 +1,13 @@
 [
   {
-    "title": "Протечка → включить свет",
-    "enabled": true,
-    "execution_mode": "local",
-    "trigger": {
-      "device_id": "leak_1",
-      "signal": "leak",
-      "operator": "==",
-      "value": 1
-    },
-    "actions": [
-      {
-        "device_id": "light_1",
-        "signal": "lamp",
-        "value": 0
-      }
-    ],
-    "graph": {
-      "nodes": [
-        {
-          "id": "event",
-          "type": "input",
-          "position": {
-            "x": 35,
-            "y": 54
-          },
-          "data": {
-            "label": "КОГДА"
-          },
-          "measured": {
-            "width": 150,
-            "height": 40
-          }
-        },
-        {
-          "id": "action",
-          "type": "output",
-          "position": {
-            "x": 390,
-            "y": 54
-          },
-          "data": {
-            "label": "ТОГДА"
-          },
-          "measured": {
-            "width": 150,
-            "height": 40
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "e1",
-          "source": "event",
-          "target": "action",
-          "animated": true,
-          "markerEnd": {
-            "type": "arrowclosed"
-          }
-        }
-      ]
-    },
-    "id": "scenario_1"
-  },
-  {
-    "title": "jj",
+    "title": "Тестовый сценарий",
     "enabled": false,
     "execution_mode": "local",
     "trigger": {
-      "device_id": "barrier_1",
-      "signal": "state",
+      "device_id": "light_1",
+      "signal": "lamp",
       "operator": "==",
-      "value": 2
+      "value": 0
     },
     "graph": {
       "nodes": [
@@ -91,61 +27,13 @@
           }
         },
         {
-          "id": "action",
-          "type": "output",
+          "id": "condition",
           "position": {
-            "x": 390,
+            "x": 310,
             "y": 54
           },
           "data": {
-            "label": "ТОГДА"
-          },
-          "measured": {
-            "width": 150,
-            "height": 40
-          }
-        }
-      ],
-      "edges": [
-        {
-          "id": "e1",
-          "source": "event",
-          "target": "action",
-          "animated": true,
-          "markerEnd": {
-            "type": "arrowclosed"
-          }
-        }
-      ]
-    },
-    "action": {
-      "device_id": "device_a1c89346",
-      "signal": "state",
-      "value": 1
-    },
-    "id": "scenario_2"
-  },
-  {
-    "title": "тест1",
-    "enabled": true,
-    "execution_mode": "local",
-    "trigger": {
-      "device_id": "barrier_1",
-      "signal": "hold_time",
-      "operator": ">=",
-      "value": "180"
-    },
-    "graph": {
-      "nodes": [
-        {
-          "id": "event",
-          "type": "input",
-          "position": {
-            "x": 35,
-            "y": 54
-          },
-          "data": {
-            "label": "КОГДА"
+            "label": "ЕСЛИ"
           },
           "measured": {
             "width": 150,
@@ -156,7 +44,7 @@
           "id": "action",
           "type": "output",
           "position": {
-            "x": 390,
+            "x": 590,
             "y": 54
           },
           "data": {
@@ -172,6 +60,15 @@
         {
           "id": "e1",
           "source": "event",
+          "target": "condition",
+          "animated": true,
+          "markerEnd": {
+            "type": "arrowclosed"
+          }
+        },
+        {
+          "id": "e2",
+          "source": "condition",
           "target": "action",
           "animated": true,
           "markerEnd": {
@@ -181,10 +78,18 @@
       ]
     },
     "action": {
-      "device_id": "barrier_1",
-      "signal": "close_cmd",
+      "device_id": "light_1",
+      "signal": "lamp",
       "value": 1
     },
-    "id": "scenario_3"
+    "conditions": [
+      {
+        "device_id": "curtain_1",
+        "signal": "opened",
+        "operator": "==",
+        "value": 0
+      }
+    ],
+    "id": "scenario_8c9d9c82d73649c9bd9dd7efda5c5812"
   }
 ]

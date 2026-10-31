@@ -58,7 +58,7 @@ class UjinAdapter:
                 "mode": "LIVE" if self.enabled and self.configured else "LOCAL",
                 "base_url": self.base, "apartment_id": self.apartment_id,
                 "message": self.config_error or ("Доступы заданы. Обмен ещё не проверен." if self.configured else
-                           "Укажите файл доступов или UJIN_UST и UJIN_APARTMENT_ID в backend/.env")}
+                           "Нет доступов")}
 
     def safe_message(self, value):
         message = str(value)

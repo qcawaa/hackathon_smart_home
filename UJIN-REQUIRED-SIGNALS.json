@@ -69,35 +69,12 @@
       "signals": [
         {
           "name": "open_cmd",
-          "title": "Открыть",
-          "control": "switch",
-          "management": "rw",
-          "kind": "capability",
-          "group": "capability",
-          "import_name": "integrations_devices_open_cmd",
-          "required_in_bms": true
-        },
-        {
-          "name": "close_cmd",
-          "title": "Закрыть",
+          "title": "Открыть на 120 секунд",
           "control": "push_time",
           "management": "w",
           "kind": "capability",
           "group": "capability",
-          "import_name": "integrations_devices_close_cmd",
-          "required_in_bms": true
-        },
-        {
-          "name": "hold_time",
-          "title": "Держать открытым, c",
-          "control": "counter",
-          "management": "rw",
-          "kind": "setting",
-          "group": "setting",
-          "measure": "c",
-          "min": 0,
-          "max": 300,
-          "import_name": "integrations_devices_hold_time",
+          "import_name": "integrations_devices_open_cmd",
           "required_in_bms": true
         },
         {
@@ -109,50 +86,9 @@
           "group": "property",
           "layout": {
             "0": "закрыто",
-            "1": "открывается",
-            "2": "открыто",
-            "3": "закрывается",
-            "4": "удержание"
+            "2": "открыто"
           },
           "import_name": "integrations_devices_state",
-          "required_in_bms": true
-        },
-        {
-          "name": "obstacle",
-          "title": "Предмет под стрелой",
-          "control": "list",
-          "management": "r",
-          "kind": "property",
-          "group": "property",
-          "layout": {
-            "0": "нет",
-            "1": "есть"
-          },
-          "import_name": "integrations_devices_obstacle",
-          "required_in_bms": true
-        },
-        {
-          "name": "alarm",
-          "title": "Авария",
-          "control": "list",
-          "management": "r",
-          "kind": "property",
-          "group": "property",
-          "layout": {
-            "0": "нет",
-            "1": "застревание"
-          },
-          "import_name": "integrations_devices_alarm",
-          "required_in_bms": true
-        },
-        {
-          "name": "cycles",
-          "title": "Циклов открытий",
-          "control": "counter",
-          "management": "r",
-          "kind": "property",
-          "group": "property",
-          "import_name": "integrations_devices_cycles",
           "required_in_bms": true
         }
       ]

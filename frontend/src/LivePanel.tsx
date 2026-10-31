@@ -58,7 +58,7 @@ export default function LivePanel({ open, onClose, status, devices, onRefresh }:
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Alert showIcon type={status.connected === false ? 'error' : status.connected ? 'success' : 'info'}
         message={status.message || 'Проверяем настройки'}
-        description={status.configured ? `Квартира ${status.apartment_id}. ${status.running ? 'Автоматический обмен включён.' : 'Доступна ручная синхронизация. Для автоматического обмена задайте APP_MODE=live в backend/.env и перезапустите backend.'}` : 'Запустите backend/tools/configure_ujin.py с вашим файлом доступов и перезапустите backend.'}/>
+        description={status.configured ? `Квартира ${status.apartment_id}. ${status.running ? 'Автоматический обмен включён.' : ' '}` : ' '}/>
       {error && <Alert type="error" showIcon message={error}/>}
       <Space wrap>
         <Button type="primary" loading={busy} disabled={!status.configured || !bindings.length} onClick={sync}>Синхронизировать</Button>

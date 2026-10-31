@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from app.services.device_manager import DeviceManager
 from app.services.device_presets import PRESETS, get_preset, list_presets
 from app.services.event_bus import EventBus
 from app.services.scenario_engine import ScenarioEngine, compare
+from app.services.quick_scenarios import QUICK_SCENARIOS, run_quick_scenario
 from app.services.scenario_compiler import compile_autoscript
 from app.services.storage import Storage
 from app.services.ujin_adapter import UjinAdapter
@@ -339,13 +341,34 @@ async def scenarios():
     return scenario_rows()
 
 
+@app.get("/api/quick-scenarios")
+async def quick_scenarios():
+    return list(QUICK_SCENARIOS.values())
+
+
+@app.post("/api/quick-scenarios/{scenario_id}/run")
+async def run_quick(scenario_id: str):
+    if scenario_id not in QUICK_SCENARIOS:
+        raise error(404, "SCENARIO_NOT_FOUND", "Сценарий не найден")
+    return await run_quick_scenario(scenario_id, manager, engine)
+
+
+@app.delete("/api/quick-scenarios/{scenario_id}")
+async def delete_quick(scenario_id: str):
+    if scenario_id not in QUICK_SCENARIOS:
+        raise error(404, "SCENARIO_NOT_FOUND", "Сценарий не найден")
+    raise error(403, "PROTECTED_SCENARIO", "Закреплённый сценарий нельзя удалить")
+
+
 @app.post("/api/scenarios")
 async def create_scenario(body: dict):
+    if body.get("id") in QUICK_SCENARIOS:
+        raise error(403, "PROTECTED_SCENARIO", "Закреплённый сценарий нельзя изменить")
     try:
         validate_scenario(body)
         rows = scenario_rows()
         if not body.get("id"):
-            body["id"] = f"scenario_{len(rows) + 1}"
+            body["id"] = f"scenario_{uuid.uuid4().hex}"
         rows = [row for row in rows if row.get("id") != body["id"]]
         rows.append(body)
         storage.write("scenarios.json", rows)
@@ -364,6 +387,8 @@ async def get_scenario(scenario_id: str):
 
 @app.put("/api/scenarios/{scenario_id}")
 async def update_scenario(scenario_id: str, body: dict):
+    if scenario_id in QUICK_SCENARIOS:
+        raise error(403, "PROTECTED_SCENARIO", "Закреплённый сценарий нельзя изменить")
     body["id"] = scenario_id
     try:
         validate_scenario(body)
@@ -379,10 +404,13 @@ async def update_scenario(scenario_id: str, body: dict):
 
 @app.delete("/api/scenarios/{scenario_id}")
 async def delete_scenario(scenario_id: str):
+    if scenario_id in QUICK_SCENARIOS:
+        raise error(403, "PROTECTED_SCENARIO", "Закреплённый сценарий нельзя удалить")
     rows = scenario_rows()
     if not any(row.get("id") == scenario_id for row in rows):
         raise error(404, "SCENARIO_NOT_FOUND", "Сценарий не найден")
     storage.write("scenarios.json", [row for row in rows if row.get("id") != scenario_id])
+    engine._trigger_active.pop(scenario_id, None)
     return {"ok": True}
 
 

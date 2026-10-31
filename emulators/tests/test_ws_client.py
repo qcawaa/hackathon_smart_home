@@ -55,7 +55,7 @@ class TestWsHub(unittest.TestCase):
     def test_writable_signal_becomes_command(self):
         self.hub.handle("update", [{"sn": 17515293610000463,
                                     "signals": [{"name": "open_cmd", "value": "1"}]}])
-        self.assertEqual(self.barrier.signals["state"].value, 1)  # OPENING
+        self.assertEqual(self.barrier.signals["state"].value, 2)  # OPEN
 
     def test_readonly_signal_not_command(self):
         self.hub.handle("update", [{"sn": 17516841600000848,

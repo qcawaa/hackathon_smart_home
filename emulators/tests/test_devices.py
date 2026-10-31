@@ -11,10 +11,9 @@ from core import CommandServer, Device, Signal  # noqa: E402
 from ujin_client import UjinClient  # noqa: E402
 from devices import REGISTRY  # noqa: E402
 from devices.leak_sensor import LeakSensor  # noqa: E402
-from devices.barrier import Barrier  # noqa: E402
+from devices.barrier import Barrier, OPEN_SECONDS  # noqa: E402
 from devices.thermostat import Thermostat  # noqa: E402
-from devices.elevator import Elevator  # noqa: E402
-from devices.leak_hub import LeakHub  # noqa: E402
+from devices.light import Light  # noqa: E402
 
 
 class RecordingClient(UjinClient):
@@ -64,45 +63,31 @@ class LeakTest(unittest.TestCase):
 
 
 class BarrierTest(unittest.TestCase):
-    def _open_cycle(self):
+    def test_open_for_fixed_duration(self):
         c = RecordingClient()
-        d = Barrier(serial="2", client=c, default_hold=2)
-        d.handle_recv({"recv": [{"command": "management", "id": "2",
-                                 "open_cmd": 1}]})
-        for _ in range(10):
-            d.step()
-        state = published_map(c)["state"]
-        return c, d, state
-
-    def test_auto_close_after_hold(self):
-        _, d, state = self._open_cycle()
-        self.assertEqual(state, 0.001)  # wire 0->0.001 (мина №1)
-        self.assertEqual(d.signals["cycles"].value, 1)
-
-    def test_obstacle_reversal(self):
-        c = RecordingClient()
-        d = Barrier(serial="2", client=c, default_hold=60)
-        d.handle_recv({"recv": [{"command": "management", "id": "2",
-                                 "open_cmd": 1}]})
-        for _ in range(4):
-            d.step()
+        d = Barrier(serial="2", client=c)
+        d.handle_recv({"recv": [{"command": "management", "open_cmd": 1}]})
+        d.step(0)
+        self.assertEqual(published_map(c)["state"], 2)
+        d.step(OPEN_SECONDS - 1)
         self.assertEqual(d.signals["state"].value, 2)
-        d.handle_recv({"recv": [{"command": "management", "id": "2",
-                                 "close_cmd": 1}]})
-        d.step()
-        self.assertEqual(d.signals["state"].value, 3)
-        d.set_obstacle(True)
-        d.step()
+        d.step(1)
+        self.assertEqual(published_map(c)["state"], 0.001)
+
+    def test_repeated_command_does_not_extend_opening(self):
+        d = Barrier(serial="2")
+        d.on_command("open_cmd", 1)
+        d.step(6)
+        d.on_command("open_cmd", 1)
+        d.step(OPEN_SECONDS - 6)
+        self.assertEqual(d.signals["state"].value, 0)
+        d.on_command("open_cmd", 1)
         self.assertEqual(d.signals["state"].value, 2)
 
-    def test_jam_alarm(self):
-        c = RecordingClient()
-        d = Barrier(serial="2", client=c, default_hold=60, jam_limit=1)
-        d.handle_recv({"recv": [{"command": "management", "id": "2",
-                                 "open_cmd": 1}]})
-        d.step()
-        d.step()
-        self.assertEqual(d.signals["alarm"].value, 1)
+    def test_only_open_command_and_state_are_declared(self):
+        d = Barrier(serial="2")
+        self.assertEqual(set(d.signals), {"fw", "open_cmd", "state"})
+        self.assertEqual(d.signals["open_cmd"].management, "w")
 
 
 class ThermostatTest(unittest.TestCase):
@@ -139,67 +124,13 @@ class ThermostatTest(unittest.TestCase):
         self.assertEqual(d.signals["output"].value, 0)
 
 
-class ElevatorTest(unittest.TestCase):
-    def test_call_moves_and_emits_events(self):
-        c = RecordingClient()
-        d = Elevator(serial="4", client=c, floors=5, move_ticks=1)
-        d.handle_recv({"recv": [{"command": "management", "id": "4",
-                                 "call_requested": 3}]})
-        for _ in range(3):
-            d.step()
-        self.assertEqual(d.signals["floor_current"].value, 3)
-        self.assertEqual(d.signals["door"].value, 1)
-        events = [i["value"] for e in c.published for i in e["batch"]
-                  if i["signal"] == "floor_changed"]
-        self.assertEqual(events, [2, 3])
-
-    def test_emergency_stops_motion(self):
-        c = RecordingClient()
-        d = Elevator(serial="4", client=c, floors=5, move_ticks=2)
-        d.handle_recv({"recv": [{"command": "management", "id": "4",
-                                 "call_requested": 5}]})
-        d.step()
-        d.handle_recv({"recv": [{"command": "management", "id": "4",
-                                 "emergency_btn": 1}]})
-        frozen = d.signals["floor_current"].value
-        for _ in range(5):
-            d.step()
-        self.assertEqual(d.signals["floor_current"].value, frozen)
-        self.assertEqual(d.signals["emergency"].value, 1)
-
-    def test_call_ignored_when_emergency(self):
-        c = RecordingClient()
-        d = Elevator(serial="4", client=c)
-        d.handle_recv({"recv": [{"command": "management", "id": "4",
-                                 "emergency_btn": 1}]})
-        d.handle_recv({"recv": [{"command": "management", "id": "4",
-                                 "call_requested": 2}]})
-        self.assertIsNone(d._target)
-
-
-class HubTest(unittest.TestCase):
-    def test_internal_commutation_aggregates(self):
-        c = RecordingClient()
-        d = LeakHub(serial="5", client=c, sensors=3)
-        d.sensor(2).set_wet(True)
-        d.step()
-        m = published_map(c)
-        self.assertEqual(m["leak"], 1)
-        self.assertEqual(m["leak_sensors"], "010")
-        self.assertEqual(m["siren"], 1)
-        d.handle_recv({"recv": [{"command": "management", "id": "5",
-                                 "mute": 1}]})
-        d.step()
-        self.assertEqual(published_map(c)["siren"], 0.001)  # wire 0->0.001 (мина №1)
-
-
 class ClientTest(unittest.TestCase):
     def test_dry_run_records_calls(self):
         c = UjinClient(dry_run=True, logger=lambda msg: None)
         c.create_update_device(model="emul_barrier", apartment_id=1)
         c.update_signals("777", "emul_barrier",
                          [{"signal": "state", "value": 1},
-                          {"signal": "cycles", "value": 2}])
+                          {"signal": "fw", "value": "emul-1.0"}])
         paths = [call["path"] for call in c.calls]
         self.assertEqual(paths, [
             "/api/import_device/create-update-device/",
@@ -216,18 +147,18 @@ class ClientTest(unittest.TestCase):
 
 class CommandServerTest(unittest.TestCase):
     def test_http_command_roundtrip(self):
-        d = Elevator(serial="9", floors=5, move_ticks=1, logger=lambda msg: None)
+        d = Light(serial="9", logger=lambda msg: None)
         srv = CommandServer(d, port=0)
         srv.start_thread()
         try:
             payload = json.dumps({"recv": [{"command": "management", "id": "9",
-                                            "call_requested": 2}]})
+                                            "lamp": 1}]})
             url = (f"http://127.0.0.1:{srv.port}/?data="
                    + urllib.parse.quote(payload))
             with urllib.request.urlopen(url, timeout=5) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(body["error"], 0)
-            self.assertEqual(d._target, 2)
+            self.assertEqual(d.signals["lamp"].value, 1)
         finally:
             srv.stop()
 
@@ -266,10 +197,10 @@ class DashboardTest(unittest.TestCase):
     def test_state_json(self):
         state = json.loads(self._get("/state"))
         self.assertEqual(state["state"], 0)
-        self.assertEqual(state["hold_time"], 10)
+        self.assertEqual(set(state), {"fw", "open_cmd", "state"})
 
     def test_command_form_sets_value(self):
-        body = urllib.parse.urlencode({"signal": "hold_time", "value": "42"}).encode()
+        body = urllib.parse.urlencode({"signal": "open_cmd", "value": "1"}).encode()
         url = f"http://127.0.0.1:{self.srv.port}/command"
         req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Content-Type",
@@ -277,7 +208,7 @@ class DashboardTest(unittest.TestCase):
         with urllib.request.urlopen(req, timeout=5) as resp:
             answer = json.loads(resp.read().decode("utf-8"))
         self.assertEqual(answer["error"], 0)
-        self.assertEqual(self.d.signals["hold_time"].value, 42)
+        self.assertEqual(self.d.signals["state"].value, 2)
 
 
 class AutoscriptsClientTest(unittest.TestCase):

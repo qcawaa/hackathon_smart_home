@@ -30,7 +30,8 @@ class DeviceManager:
         deleted = set(self.storage.read("deleted_devices.json", []))
         for device_id, family in (("leak_1", "leak"), ("light_1", "light"),
                                   ("thermostat_1", "thermostat"), ("barrier_1", "barrier"),
-                                  ("counter_1", "counter")):
+                                  ("counter_1", "counter"), ("kettle_1", "kettle"),
+                                  ("curtain_1", "curtain")):
             if device_id in deleted:
                 continue
             device = REGISTRY[family](serial=device_id, logger=lambda _msg: None)
@@ -171,11 +172,6 @@ class DeviceManager:
         if signal_name == "leak" and hasattr(dev, "set_wet"):
             dev.set_wet(bool(value))
             dev.step(0)
-        elif signal_name == "motion" and hasattr(dev, "set_motion"):
-            dev.set_motion(bool(value))
-            dev.step(0)
-        elif signal_name == "obstacle" and hasattr(dev, "set_obstacle"):
-            dev.set_obstacle(bool(value))
         elif signal_name in dev.signals and dev.signals[signal_name].management == "r":
             dev.set_value(signal_name, value)
         else:

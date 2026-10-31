@@ -54,7 +54,6 @@ def build_parser() -> argparse.ArgumentParser:
                         "+ --apartment-id (вместо dev-token) — устройства "
                         "команды уже созданы орг-нами/провижингом")
     p.add_argument("--model", default="", help="модель (напр. parkcloud_device)")
-    p.add_argument("--floors", type=int, default=5, help="лифт: этажей")
     p.add_argument("--resource", default="electricity",
                    choices=["electricity", "cold", "hot", "heat"],
                    help="счётчик: какой ресурс")
@@ -92,8 +91,6 @@ def main() -> None:
                         apartment_id=(args.apartment_id or "")
                         if args.ust_auth else "")
     kwargs = {}
-    if family == "elevator":
-        kwargs["floors"] = args.floors
     if family == "counter":
         kwargs["resource"] = args.resource
     device = REGISTRY[family](serial=args.serial or args.ext or "0",
