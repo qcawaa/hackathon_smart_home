@@ -1,0 +1,434 @@
+{
+  "model": "parkcloud_device",
+  "class": "integrations_devices",
+  "devices": [
+    {
+      "device_id": "leak_1",
+      "title": "Датчик протечки",
+      "serialnumber": "17048805610016974",
+      "ext_guid": "kepka_leak_01",
+      "signals": [
+        {
+          "name": "leak",
+          "title": "Протечка",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "протечка"
+          },
+          "import_name": "integrations_devices_leak",
+          "required_in_bms": true
+        },
+        {
+          "name": "battery",
+          "title": "Батарея",
+          "control": "counter",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "%",
+          "min": 0,
+          "max": 100,
+          "import_name": "integrations_devices_battery",
+          "required_in_bms": true
+        },
+        {
+          "name": "tamper",
+          "title": "Вскрытие",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "закрыт",
+            "1": "вскрыт"
+          },
+          "import_name": "integrations_devices_tamper",
+          "required_in_bms": true
+        },
+        {
+          "name": "self_test",
+          "title": "Самотест",
+          "control": "push_time",
+          "management": "w",
+          "kind": "capability",
+          "group": "capability",
+          "import_name": "integrations_devices_self_test",
+          "required_in_bms": true
+        }
+      ]
+    },
+    {
+      "device_id": "barrier_1",
+      "title": "Шлагбаум",
+      "serialnumber": "17048769610019833",
+      "ext_guid": "kepka_barrier_01",
+      "signals": [
+        {
+          "name": "open_cmd",
+          "title": "Открыть",
+          "control": "switch",
+          "management": "rw",
+          "kind": "capability",
+          "group": "capability",
+          "import_name": "integrations_devices_open_cmd",
+          "required_in_bms": true
+        },
+        {
+          "name": "close_cmd",
+          "title": "Закрыть",
+          "control": "push_time",
+          "management": "w",
+          "kind": "capability",
+          "group": "capability",
+          "import_name": "integrations_devices_close_cmd",
+          "required_in_bms": true
+        },
+        {
+          "name": "hold_time",
+          "title": "Держать открытым, c",
+          "control": "counter",
+          "management": "rw",
+          "kind": "setting",
+          "group": "setting",
+          "measure": "c",
+          "min": 0,
+          "max": 300,
+          "import_name": "integrations_devices_hold_time",
+          "required_in_bms": true
+        },
+        {
+          "name": "state",
+          "title": "Состояние стрелы",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "закрыто",
+            "1": "открывается",
+            "2": "открыто",
+            "3": "закрывается",
+            "4": "удержание"
+          },
+          "import_name": "integrations_devices_state",
+          "required_in_bms": true
+        },
+        {
+          "name": "obstacle",
+          "title": "Предмет под стрелой",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "есть"
+          },
+          "import_name": "integrations_devices_obstacle",
+          "required_in_bms": true
+        },
+        {
+          "name": "alarm",
+          "title": "Авария",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "застревание"
+          },
+          "import_name": "integrations_devices_alarm",
+          "required_in_bms": true
+        },
+        {
+          "name": "cycles",
+          "title": "Циклов открытий",
+          "control": "counter",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "import_name": "integrations_devices_cycles",
+          "required_in_bms": true
+        }
+      ]
+    },
+    {
+      "device_id": "thermostat_1",
+      "title": "Термостат",
+      "serialnumber": "17048877610012597",
+      "ext_guid": "kepka_thermostat_01",
+      "signals": [
+        {
+          "name": "temperature",
+          "title": "Температура",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "°C",
+          "import_name": "integrations_devices_temperature",
+          "required_in_bms": true
+        },
+        {
+          "name": "target_temp",
+          "title": "Цель",
+          "control": "range",
+          "management": "rw",
+          "kind": "setting",
+          "group": "setting",
+          "measure": "°C",
+          "min": 5,
+          "max": 35,
+          "import_name": "integrations_devices_target_temp",
+          "required_in_bms": true
+        },
+        {
+          "name": "mode",
+          "title": "Режим",
+          "control": "list",
+          "management": "rw",
+          "kind": "capability",
+          "group": "capability",
+          "layout": {
+            "0": "выкл",
+            "1": "нагрев",
+            "2": "охлаждение",
+            "3": "авто"
+          },
+          "import_name": "integrations_devices_mode",
+          "required_in_bms": true
+        },
+        {
+          "name": "output",
+          "title": "Нагрев/охлаждение",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "нагрев",
+            "2": "охлаждение"
+          },
+          "import_name": "integrations_devices_output",
+          "required_in_bms": true
+        },
+        {
+          "name": "humidity",
+          "title": "Влажность",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "%",
+          "import_name": "integrations_devices_humidity",
+          "required_in_bms": true
+        },
+        {
+          "name": "fault",
+          "title": "Авария датчика",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "нет данных"
+          },
+          "import_name": "integrations_devices_fault",
+          "required_in_bms": true
+        }
+      ]
+    },
+    {
+      "device_id": "counter_1",
+      "title": "Счётчик: Электроэнергия",
+      "serialnumber": "17025585610004644",
+      "ext_guid": "kepka_counter_01",
+      "signals": [
+        {
+          "name": "total",
+          "title": "Показание, кВт·ч",
+          "control": "counter",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "кВт·ч",
+          "import_name": "integrations_devices_total",
+          "required_in_bms": true
+        },
+        {
+          "name": "kvh_t1",
+          "title": "Тариф 1 (пик)",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "кВт·ч",
+          "import_name": "integrations_devices_kvh_t1",
+          "required_in_bms": true
+        },
+        {
+          "name": "kvh_t2",
+          "title": "Тариф 2 (ночь)",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "кВт·ч",
+          "import_name": "integrations_devices_kvh_t2",
+          "required_in_bms": true
+        },
+        {
+          "name": "power_w",
+          "title": "Мощность сейчас",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "Вт",
+          "import_name": "integrations_devices_power_w",
+          "required_in_bms": true
+        },
+        {
+          "name": "voltage",
+          "title": "Напряжение",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "В",
+          "import_name": "integrations_devices_voltage",
+          "required_in_bms": true
+        },
+        {
+          "name": "battery",
+          "title": "Батарея",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "%",
+          "import_name": "integrations_devices_battery",
+          "required_in_bms": true
+        },
+        {
+          "name": "online",
+          "title": "Связь",
+          "control": "list",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "layout": {
+            "0": "нет",
+            "1": "есть"
+          },
+          "import_name": "integrations_devices_online",
+          "required_in_bms": true
+        },
+        {
+          "name": "report_period",
+          "title": "Период отчёта, с",
+          "control": "counter",
+          "management": "rw",
+          "kind": "setting",
+          "group": "setting",
+          "measure": "с",
+          "min": 10,
+          "max": 3600,
+          "import_name": "integrations_devices_report_period",
+          "required_in_bms": true
+        },
+        {
+          "name": "load_relay",
+          "title": "Реле нагрузки",
+          "control": "switch",
+          "management": "rw",
+          "kind": "capability",
+          "group": "capability",
+          "layout": {
+            "0": "отключено",
+            "1": "включено"
+          },
+          "import_name": "integrations_devices_load_relay",
+          "required_in_bms": true
+        }
+      ]
+    },
+    {
+      "device_id": "light_1",
+      "title": "Светильник",
+      "serialnumber": "17048733610013356",
+      "ext_guid": "kepka_light_01",
+      "signals": [
+        {
+          "name": "lamp",
+          "title": "Свет",
+          "control": "switch",
+          "management": "rw",
+          "kind": "capability",
+          "group": "capability",
+          "layout": {
+            "0": "выкл",
+            "1": "вкл"
+          },
+          "import_name": "integrations_devices_lamp",
+          "required_in_bms": true
+        },
+        {
+          "name": "brightness",
+          "title": "Яркость",
+          "control": "range",
+          "management": "rw",
+          "kind": "capability",
+          "group": "capability",
+          "measure": "%",
+          "min": 1,
+          "max": 100,
+          "import_name": "integrations_devices_brightness",
+          "required_in_bms": true
+        },
+        {
+          "name": "power_w",
+          "title": "Мощность",
+          "control": "graph",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "Вт",
+          "import_name": "integrations_devices_power_w",
+          "required_in_bms": true
+        },
+        {
+          "name": "energy_kwh",
+          "title": "Энергия",
+          "control": "counter",
+          "management": "r",
+          "kind": "property",
+          "group": "property",
+          "measure": "кВт·ч",
+          "import_name": "integrations_devices_energy_kwh",
+          "required_in_bms": true
+        },
+        {
+          "name": "offline_timeout",
+          "title": "Авто-выкл через, с (0=выкл)",
+          "control": "counter",
+          "management": "rw",
+          "kind": "setting",
+          "group": "setting",
+          "measure": "с",
+          "min": 0,
+          "max": 3600,
+          "import_name": "integrations_devices_offline_timeout",
+          "required_in_bms": true
+        }
+      ]
+    }
+  ]
+}

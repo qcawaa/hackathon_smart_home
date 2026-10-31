@@ -17,7 +17,7 @@ class UjinClient:
                  dry_run: bool = True, timeout: float = 5.0, logger=print,
                  cls: str = "", signal_prefix: str = "",
                  ust: str = "", apartment_id: str = ""):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.rstrip("/").removesuffix("/api")
         self.device_token = device_token
         self.dry_run = dry_run
         self.timeout = timeout
@@ -70,7 +70,7 @@ class UjinClient:
         return []
 
     def _post(self, path: str, params: dict) -> dict:
-        if self._uae():
+        if self._uae() and path.startswith("/api/import_device/"):
             # auth в query; device-token/apartment_id из тела вон (гейт body
             # не читает, а device-token=x-y-z — дыра, письмо п.20, не трогать)
             params = {k: v for k, v in params.items()
@@ -78,9 +78,12 @@ class UjinClient:
                       None}
             url = self.base_url + path + "?" + self._auth_qs(
                 params.get("serialnumber") or "")
-        else:
+        elif path.startswith("/api/import_device/"):
             params = {"device-token": self.device_token, **{
                 k: v for k, v in params.items() if v is not None}}
+            url = self.base_url + path
+        else:
+            params = {k: v for k, v in params.items() if v is not None}
             url = self.base_url + path
         self.calls.append({"path": path, "params": params})
         call = ("publish" if "update-device-signal" in path
@@ -118,11 +121,11 @@ class UjinClient:
             "custom_data": custom_data,
         })
 
-    def _post_json(self, path: str, payload: dict) -> dict:
+    def _post_json(self, path: str, payload: dict, serialnumber: str = "") -> dict:
         rows0 = payload.get("data") or []
         first = rows0[0] if rows0 and isinstance(rows0[0], dict) else {}
         url = (self.base_url + path + "?" + self._auth_qs(
-            str(first.get("sn") or first.get("serialnumber") or "")))
+            str(serialnumber or first.get("sn") or first.get("serialnumber") or "")))
         self.calls.append({"path": path, "payload": payload})
         rows = payload.get("data") or []
         call = ("publish" if "update-device-signal" in path
@@ -141,19 +144,21 @@ class UjinClient:
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def publish_group(self, rows: list, new_short: list = ()) -> dict:
+    def publish_group(self, rows: list, new_short: list = (), serialnumber: str = "") -> dict:
         """Двухфазная публикация group-ом (PULL-CLIENT, мины): сначала
         новые сигналы короткими именами (создают словарь <класс>_<имя>),
         потом полные имена со значениями. c = класс модели, не выдумка."""
         path = "/api/import_device/group-update-device-signal/"
         if new_short:
-            self._post_json(path, {"data": list(new_short)})
+            response = self._post_json(path, {"data": list(new_short)}, serialnumber)
+            if response.get("error") not in (None, False, 0, "0"):
+                return response
             if not self.dry_run:
                 import time
                 time.sleep(2)  # memcache-кэш нуля (мина №2)
         if not rows:
             return {"error": 0}
-        return self._post_json(path, {"data": list(rows)})
+        return self._post_json(path, {"data": list(rows)}, serialnumber)
 
     def update_signal(self, serialnumber: str, model: str, signal: str, value) -> dict:
         return self._post("/api/import_device/update-device-signal/", {
@@ -236,7 +241,18 @@ class UjinClient:
 
     def get_device_info(self, ust_token: str, serialnumber: str) -> dict:
         return self._get("/api/bmsdevice/get-device-info/", {
-            "token": ust_token, "serialnumber": serialnumber,
+            "token": ust_token, "serialnumber": serialnumber, "mts": 1,
+        })
+
+    def authenticate(self, login: str, password: str, app: str = "employee") -> dict:
+        return self._post("/api/auth/authenticate/", {"login": login, "password": password, "app": app})
+
+    def get_devices(self, ust_token: str) -> dict:
+        return self._get("/api/bmsdevice/get-devices/", {"token": ust_token, "limit": 100})
+
+    def send_signal(self, ust_token: str, serial: str, signal: str, value) -> dict:
+        return self._get("/api/apartment/send-signal/", {
+            "token": ust_token, "serialnumber": serial, "signal": signal, "value": value,
         })
 
     @staticmethod

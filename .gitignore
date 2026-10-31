@@ -10,6 +10,8 @@ frontend/dist/
 backend/.env
 .env
 data/*.tmp
+data/ujin_bindings.json
+UJIN-LIVE-CHECK.json
 *.log
 доступы.json
 *.pdf

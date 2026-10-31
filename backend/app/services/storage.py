@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -31,4 +32,13 @@ class Storage:
         content = json.dumps(value, ensure_ascii=False, indent=2)
         with self._lock:
             tmp.write_text(content, encoding="utf-8")
-            os.replace(tmp, path)
+            # OneDrive/antivirus can briefly hold the destination on Windows.
+            # Keep atomic replacement and a bounded retry; persistent errors surface.
+            for attempt in range(6):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(.01 * 2 ** attempt)

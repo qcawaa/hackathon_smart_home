@@ -22,19 +22,23 @@ from app.services.scenario_engine import ScenarioEngine, compare
 from app.services.scenario_compiler import compile_autoscript
 from app.services.storage import Storage
 from app.services.ujin_adapter import UjinAdapter
+from app.services.ujin_bridge import UjinBridge
 
 DATA = Path(os.getenv("APP_DATA_DIR", ROOT / "data"))
 storage, bus, ujin = Storage(DATA), EventBus(), UjinAdapter()
 manager = DeviceManager(storage, bus)
 engine = ScenarioEngine(manager, storage, bus)
+bridge = UjinBridge(manager, storage, bus, ujin)
 
 @asynccontextmanager
 async def lifespan(_app):
     manager.start()
     engine.start()
+    bridge.start()
     try:
         yield
     finally:
+        await bridge.stop()
         await engine.stop()
         await manager.stop()
 
@@ -52,6 +56,13 @@ class CommandBody(BaseModel):
 class SimulateBody(BaseModel):
     signal: str
     value: object
+
+
+class BindingBody(BaseModel):
+    # Serial numbers exceed JavaScript's safe integer range. Keep them as strings.
+    serialnumber: str = Field(pattern=r"^[0-9]+$", max_length=40)
+    ext_guid: str = Field(pattern=r"^[A-Za-z0-9_]+$", max_length=100)
+    signal_map: dict[str, str] = Field(default_factory=dict)
 
 
 class GenericSignal(BaseModel):
@@ -171,7 +182,7 @@ async def health():
 
 @app.get("/api/status")
 async def status():
-    return {"mode": "LOCAL", "devices": len(manager.devices), "live": ujin.status()}
+    return {"mode": bridge.status()["mode"], "devices": len(manager.devices), "live": bridge.status()}
 
 
 @app.get("/api/device-presets")
@@ -230,6 +241,7 @@ async def delete_device(device_id: str):
         raise error(409, "DEVICE_IN_USE", f"Устройство используется в сценарии «{titles}». Сначала измените или удалите этот сценарий.")
     try:
         manager.remove_device(device_id)
+        await bridge.unbind(device_id)
     except KeyError:
         raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено или его нельзя удалить")
     return {"ok": True}
@@ -306,6 +318,7 @@ async def delete_generic(device_id: str):
             titles = "», «".join(row.get("title", "Без названия") for row in affected)
             raise error(409, "DEVICE_IN_USE", f"Устройство используется в сценарии «{titles}». Сначала измените или удалите этот сценарий.")
         manager.remove_generic(device_id)
+        await bridge.unbind(device_id)
         return {"ok": True}
     except KeyError:
         raise error(404, "DEVICE_NOT_FOUND", "Устройство не найдено")
@@ -420,7 +433,44 @@ async def events():
 
 @app.get("/api/live/status")
 async def live_status():
-    return ujin.status()
+    return bridge.status()
+
+
+@app.get("/api/live/bindings")
+async def live_bindings():
+    return bridge.binding_list()
+
+
+@app.put("/api/live/bindings/{device_id}")
+async def bind_live_device(device_id: str, body: BindingBody):
+    try:
+        return await bridge.bind(device_id, body.model_dump())
+    except KeyError:
+        raise error(404, "DEVICE_NOT_FOUND", "Эмулятор не найден")
+    except ValueError as exc:
+        raise error(400, "INVALID_BINDING", str(exc))
+    except RuntimeError as exc:
+        raise error(502, "UJIN_UNAVAILABLE", ujin.safe_message(exc))
+
+
+@app.delete("/api/live/bindings/{device_id}")
+async def unbind_live_device(device_id: str):
+    return await bridge.unbind(device_id)
+
+
+@app.post("/api/live/sync")
+async def sync_live():
+    if not ujin.configured:
+        raise error(400, "LIVE_NOT_CONFIGURED", "Для LIVE настройте доступы в backend/.env")
+    return await bridge.sync_once()
+
+
+@app.get("/api/live/devices")
+async def list_live_devices():
+    try:
+        return await asyncio.to_thread(ujin.list_devices)
+    except Exception as exc:
+        raise error(502, "UJIN_UNAVAILABLE", ujin.safe_message(exc))
 
 
 @app.get("/api/live/devices/{serial}")
@@ -428,9 +478,9 @@ async def read_live_device(serial: str):
     if not ujin.configured:
         raise error(400, "LIVE_NOT_CONFIGURED", "Для LIVE настройте доступы в backend/.env")
     try:
-        return ujin.read_device(serial)
+        return ujin.public(await asyncio.to_thread(ujin.read_device, serial))
     except Exception as exc:
-        raise error(502, "UJIN_UNAVAILABLE", f"Ujin не ответил: {exc}")
+        raise error(502, "UJIN_UNAVAILABLE", ujin.safe_message(exc))
 
 
 @app.post("/api/live/devices/{serial}/command")
@@ -438,9 +488,9 @@ async def send_live_command(serial: str, body: CommandBody):
     if not ujin.configured:
         raise error(400, "LIVE_NOT_CONFIGURED", "Для LIVE настройте доступы в backend/.env")
     try:
-        return ujin.send_signal(serial, body.signal, body.value)
+        return await asyncio.to_thread(ujin.send_signal, serial, body.signal, body.value)
     except Exception as exc:
-        raise error(502, "UJIN_UNAVAILABLE", f"Команда Ujin не выполнена: {exc}")
+        raise error(502, "UJIN_UNAVAILABLE", ujin.safe_message(exc))
 
 
 @app.get("/api/live/scenarios")
@@ -448,10 +498,11 @@ async def live_scenarios():
     if not ujin.configured:
         return {"configured": False, "items": []}
     try:
-        client = ujin.client()
-        return {"configured": True, "items": client.autoscripts_list(ujin.ust)}
+        await asyncio.to_thread(ujin.client)
+        response = await asyncio.to_thread(ujin.call, "autoscripts_list", ujin.ust)
+        return {"configured": True, "items": ujin.public(response)}
     except Exception as exc:
-        return {"configured": True, "items": [], "error": str(exc)}
+        raise error(502, "UJIN_UNAVAILABLE", ujin.safe_message(exc))
 
 
 @app.post("/api/live/scenarios/{scenario_id}/deploy")
@@ -462,17 +513,18 @@ async def deploy_scenario(scenario_id: str):
     if not ujin.configured:
         raise error(400, "LIVE_NOT_CONFIGURED", "Для LIVE настройте доступы в backend/.env")
     try:
-        compiled = compile_autoscript(scenario)
-        client = ujin.client()
-        response = client.autoscripts_edit(ujin.ust, int(scenario.get("ujin_id") or 0), "trigger",
-                                           condition=compiled["when"], set_signal=compiled["then"],
-                                           title=compiled["title"])
-        remote_id = (response.get("result") or {}).get("id") if isinstance(response, dict) else None
-        if scenario.get("enabled") and remote_id:
-            client.autoscripts_activate(ujin.ust, int(remote_id))
-        return {"compiled": compiled, "response": response}
-    except (ValueError, OSError, KeyError, TypeError) as exc:
-        raise error(400, "LIVE_DEPLOY_FAILED", str(exc))
+        compiled = compile_autoscript(scenario, bridge.bindings, ujin.model_class)
+        await asyncio.to_thread(ujin.client)
+        response = await asyncio.to_thread(ujin.call, "autoscripts_edit", ujin.ust,
+            int(scenario.get("ujin_id") or 0), "trigger", condition=compiled["when"],
+            set_signal=compiled["then"], title=compiled["title"])
+        remote_id = (response.get("data") or response.get("result") or {}).get("id")
+        if remote_id:
+            scenario["ujin_id"] = str(remote_id)
+            storage.write("scenarios.json", [scenario if row.get("id") == scenario_id else row for row in scenario_rows()])
+        return {"compiled": compiled, "response": ujin.public(response)}
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+        raise error(400, "LIVE_DEPLOY_FAILED", ujin.safe_message(exc))
 
 
 @app.websocket("/ws/events")
@@ -487,3 +539,11 @@ async def websocket_events(websocket: WebSocket):
         pass
     finally:
         bus.unsubscribe(queue)
+
+
+# Serve the built product from the same origin as REST/WebSocket. Vite remains
+# available for development and proxies the same /api and /ws paths.
+frontend_dist = ROOT / "frontend" / "dist"
+if frontend_dist.is_dir():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
