@@ -32,6 +32,9 @@ manager = DeviceManager(storage, bus)
 engine = ScenarioEngine(manager, storage, bus)
 bridge = UjinBridge(manager, storage, bus, ujin)
 
+import os
+print("Логин:", os.getenv("UJIN_LOGIN"))
+
 @asynccontextmanager
 async def lifespan(_app):
     manager.start()

@@ -15,6 +15,19 @@ from .generic_device import GenericDevice
 from .device_presets import PRESETS, get_preset
 
 
+def should_notify_change(device, signal, previous, value):
+    """Notify about on/off, curtain position changes and a newly detected leak."""
+    try:
+        transition = (float(previous), float(value))
+    except (TypeError, ValueError):
+        return False
+    if transition not in ((0, 1), (1, 0)):
+        return False
+    if signal.name == "leak" or "протеч" in signal.title.lower():
+        return transition == (0, 1)
+    return signal.control == "switch" or (device.model == "emul_curtain" and signal.name == "opened")
+
+
 class DeviceManager:
     def __init__(self, storage, bus):
         self.storage, self.bus = storage, bus
@@ -160,8 +173,10 @@ class DeviceManager:
         dev.set_value(signal_name, value)
         command_result = dev.on_command(signal_name, value)
         dev.step(0)
-        await self._publish_diff(device_id, old)
+        change = await self._publish_diff(device_id, old)
         result = self.details(device_id)
+        if change:
+            result["device_change"] = change
         if command_result:
             result["command_result"] = command_result
         return result
@@ -182,13 +197,24 @@ class DeviceManager:
     async def _publish_diff(self, device_id, old):
         state = self.get_state(device_id)
         self._old[device_id] = state
+        changes = []
+        device = self.get(device_id)
+        presentation = {row["name"]: row for row in self.details(device_id)["declaration"]}
         for signal, value in state.items():
             if old.get(signal) != value:
+                if should_notify_change(device, device.signals[signal], old.get(signal), value):
+                    changes.append({"signal": presentation.get(signal) or device.signals[signal].as_declaration(),
+                                    "previous": old.get(signal), "value": value})
                 event = {"type": "signal", "device_id": device_id, "signal": signal,
                          "value": value, "state": state}
                 await self.bus.publish(event)
                 await self.bus.publish({"type": "device_state", "device_id": device_id,
                                         "state": state, "changed_signal": signal})
+        if changes:
+            notice = {"type": "device_change", "id": uuid.uuid4().hex,
+                      "device_id": device_id, "title": device.title, "changes": changes}
+            await self.bus.publish(notice)
+            return notice
 
     async def _tick_loop(self):
         while True:

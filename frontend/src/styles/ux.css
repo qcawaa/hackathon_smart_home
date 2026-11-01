@@ -79,3 +79,26 @@ button,
 .quick-scenario-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#183e54;color:#75d7ff;font-size:23px}
 .quick-scenario-card .ant-typography{margin-bottom:12px}
 .quick-scenario-card .ant-btn{margin-top:8px}
+
+.ant-notification .device-change-notice.ant-notification-notice{
+  width:min(440px,calc(100vw - 32px));padding:20px 22px;
+  background:linear-gradient(135deg,#14354b,#0c1d2c);border:1px solid #4bcfff;
+  border-left:5px solid #4bcfff;border-radius:14px;
+  box-shadow:0 12px 44px #0009,0 0 24px #39c8ff30;
+}
+.device-change-notice .ant-notification-notice-message{padding-right:16px;color:#f0faff;font-size:18px;font-weight:700}
+.device-change-label{display:block;margin-bottom:4px;color:#76dcff;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.device-change-title{display:block;overflow-wrap:anywhere}
+.device-change-values{display:grid;gap:10px;max-height:min(32vh,240px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#41758f transparent;color:#d8eaf5}
+.device-change-values>div>span{display:block;color:#a8c5d7;font-size:12px}
+.device-change-values>div>div{font-size:15px;overflow-wrap:anywhere}
+.device-change-values strong{color:#fff;font-size:16px}
+.device-change-previous{color:#99b4c6}
+.device-change-notice .ant-notification-notice-close{color:#b9dff2}
+.device-change-notice .ant-notification-notice-close:hover{color:#fff;background:#ffffff18}
+.device-change-notice .ant-notification-notice-progress{height:3px}
+.ant-notification .device-change-issue.ant-notification-notice{border-color:#ffd072;border-left-color:#ffd072}
+@media(max-width:560px){
+  .ant-notification.ant-notification-topRight{right:12px!important;margin-right:0}
+  .ant-notification .device-change-notice.ant-notification-notice{width:calc(100vw - 24px);padding:16px}
+}

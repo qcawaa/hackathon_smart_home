@@ -4,6 +4,7 @@ import { ApiOutlined, AppstoreOutlined, BulbOutlined, CoffeeOutlined, HomeOutlin
 import { Background, Controls, MarkerType, ReactFlow, addEdge, useEdgesState, useNodesState, type Connection, type Edge, type Node } from '@xyflow/react';
 import { request, wsUrl } from './api';
 import LivePanel from './LivePanel';
+import type { NotificationInstance } from 'antd/es/notification/interface';
 
 const { Sider, Header, Content } = Layout;
 const { Title, Text } = Typography;
@@ -12,12 +13,37 @@ type Device = { id: string; title: string; model: string; type?: string; preset_
 type DevicePreset = { type: string; title: string; icon: string; description: string; features: Record<string,string[]>; declaration: Signal[] };
 type Scenario = { id: string; title: string; enabled: boolean; execution_mode: string; ujin_id?: string; trigger: any; condition?: any; conditions?: any[]; action?: any; actions?: any[]; graph?: { nodes: Node[]; edges: Edge[] } };
 type ScenarioActionNotice = {id:string;status:'success'|'warning'|'error';message:string};
+type DeviceChangeNotice = {id:string;device_id:string;title:string;changes:{signal:Signal;previous:any;value:any}[]};
 const shownScenarioActions = new Set<string>();
 function showScenarioAction(notice:ScenarioActionNotice) {
+  // Successful actions are already reported by the common device change stream.
+  if(notice.status==='success')return;
   if(shownScenarioActions.has(notice.id))return;
   shownScenarioActions.add(notice.id);
   if(shownScenarioActions.size>300)shownScenarioActions.delete(shownScenarioActions.values().next().value!);
-  notification[notice.status]({message:notice.message,placement:'bottomRight',duration:4,style:{width:320,padding:'12px 16px'}});
+  notification[notice.status]({message:notice.message,placement:'topRight',duration:10,showProgress:true,className:'device-change-notice device-change-issue'});
+}
+const shownDeviceChanges = new Set<string>();
+const activeDeviceChanges = new Map<string, Map<string, {change:DeviceChangeNotice['changes'][number];expires:number}>>();
+function showDeviceChange(notice:DeviceChangeNotice, api:NotificationInstance, onOpen:(id:string)=>void) {
+  if(shownDeviceChanges.has(notice.id))return;
+  shownDeviceChanges.add(notice.id);
+  if(shownDeviceChanges.size>300)shownDeviceChanges.delete(shownDeviceChanges.values().next().value!);
+  const now = Date.now();
+  const changes = activeDeviceChanges.get(notice.device_id) || new Map();
+  for(const [name,item] of changes)if(item.expires<=now)changes.delete(name);
+  for(const change of notice.changes)changes.set(change.signal.name,{change,expires:now+8000});
+  activeDeviceChanges.set(notice.device_id,changes);
+  api.info({
+    // Keep recent changes visible even when the next telemetry update arrives.
+    key:`device-change:${notice.device_id}`,
+    message:<><span className="device-change-label">Изменение устройства</span><span className="device-change-title">{notice.title}</span></>,
+    description:<div className="device-change-values">{Array.from(changes.values(),({change})=><div key={change.signal.name}><span>{change.signal.title}</span><div><span className="device-change-previous">{formatSignalValue(change.signal,change.previous)}</span><span aria-hidden="true"> → </span><strong>{formatSignalValue(change.signal,change.value)}</strong></div></div>)}</div>,
+    className:'device-change-notice',
+    role:'status',
+    onClose:()=>{activeDeviceChanges.delete(notice.device_id);},
+    actions:<Button size="small" onClick={()=>{onOpen(notice.device_id);activeDeviceChanges.delete(notice.device_id);api.destroy(`device-change:${notice.device_id}`);}}>Открыть устройство</Button>,
+  });
 }
 type SignalContext = 'trigger' | 'condition' | 'action';
 type Rule = { device_id: string; signal: string; operator: string; value: any };
@@ -139,6 +165,7 @@ export function formatScenarioHumanReadable(trigger: Rule, condition: Rule | nul
 }
 
 export default function App() {
+  const [deviceNotifications, deviceNotificationHolder] = notification.useNotification({placement:'topRight',top:80,duration:8,showProgress:true,pauseOnHover:true,stack:{threshold:3}});
   const [page, setPage] = useState('overview');
   const [devices, setDevices] = useState<Device[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -161,12 +188,36 @@ export default function App() {
   };
   useEffect(() => { refresh(); request<any[]>('/events').then(setLogs).catch(()=>{}); }, []);
   useEffect(() => {
-    let socket: WebSocket | undefined; let retry: number;
-    const connect = () => { socket = new WebSocket(wsUrl); socket.onmessage = (msg) => { const e = JSON.parse(msg.data); if (e.type === 'device_state') { setDevices(old => old.map(d => d.id === e.device_id ? { ...d, state: e.state } : d)); setSelected(old => old && old.id === e.device_id ? { ...old, state: e.state } : old); } if (e.type === 'scenario_action') showScenarioAction(e); if (e.type === 'integration_status') setLive(e.status); if (e.type === 'execution') setLogs(old => [e.item, ...old].slice(0,100)); }; socket.onclose = () => { retry = window.setTimeout(connect, 1800); }; };
-    connect(); return () => { window.clearTimeout(retry); socket?.close(); };
-  }, []);
+    let socket: WebSocket | undefined; let retry: number; let disposed = false;
+    const connect = () => {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = (msg) => {
+        if(disposed)return;
+        const e = JSON.parse(msg.data);
+        if (e.type === 'device_state') {
+          setDevices(old => old.map(d => d.id === e.device_id ? { ...d, state: e.state } : d));
+          setSelected(old => old && old.id === e.device_id ? { ...old, state: e.state } : old);
+        }
+        if (e.type === 'device_change') showDeviceChange(e,deviceNotifications,detail);
+        if (e.type === 'scenario_action') showScenarioAction(e);
+        if (e.type === 'integration_status') setLive(e.status);
+        if (e.type === 'execution') setLogs(old => [e.item, ...old].slice(0,100));
+      };
+      socket.onclose = () => { if(!disposed)retry = window.setTimeout(connect, 1800); };
+    };
+    connect(); return () => { disposed = true; window.clearTimeout(retry); socket?.close(); };
+  }, [deviceNotifications]);
   const detail = async (id: string) => { try { setSelected(await request<Device>(`/devices/${id}`)); setPage('devices'); } catch (e:any) { notification.error({ message: e.message }); } };
-  const command = async (device: Device, signal: Signal, value: any) => { try { const result=await request<any>(`/devices/${device.id}/command/${signal.name}`, { method:'POST', body: JSON.stringify({value}) }); if(signal.name==='self_test'&&result.command_result) notification.success({message:'Проверка датчика завершена',description:result.command_result,duration:7}); else if(result.command_result) notification.info({message:'Результат команды',description:result.command_result,duration:7}); else notification.success({message:'Команда выполнена', description:`${signal.title}: ${formatSignalValue(signal,value)}`}); await refresh(); if(selected?.id===device.id) setSelected(await request<Device>(`/devices/${device.id}`)); } catch(e:any) { notification.error({message:'Не удалось изменить сигнал',description:e.message}); } };
+  const command = async (device: Device, signal: Signal, value: any) => {
+    try {
+      const result=await request<any>(`/devices/${device.id}/command/${signal.name}`, { method:'POST', body: JSON.stringify({value}) });
+      if(result.device_change)showDeviceChange(result.device_change,deviceNotifications,detail);
+      if(signal.name==='self_test'&&result.command_result) notification.success({message:'Проверка датчика завершена',description:result.command_result,duration:7});
+      else if(result.command_result) notification.info({message:'Результат команды',description:result.command_result,duration:7});
+      await refresh();
+      if(selected?.id===device.id) setSelected(await request<Device>(`/devices/${device.id}`));
+    } catch(e:any) { notification.error({message:'Не удалось изменить сигнал',description:e.message}); }
+  };
   const removeDevice = (device: Device) => { setDeleteTarget(device); setDeleteError(''); };
   const confirmDeleteDevice = async () => {
     if (!deleteTarget || deleteBusy) return;
@@ -201,6 +252,7 @@ export default function App() {
     {page==='devices' && <DevicesPage devices={devices} selected={selected} onOpen={detail} onBack={()=>setSelected(null)} onCommand={command} onSimulate={async(d,v)=>{const signal='leak';try{await request(`/devices/${d.id}/simulate`,{method:'POST',body:JSON.stringify({signal,value:v})});await refresh();if(selected)setSelected(await request<Device>(`/devices/${selected.id}`));}catch(e:any){notification.error({message:e.message});}}} onBuild={()=>setBuilderOpen(true)} onEditDevice={device=>{setRenameDevice(device);setRenameTitle(device.title);setRenameOpen(true);}} onDeleteDevice={removeDevice} />}
     {page==='scenarios' && <ScenarioPage scenarios={scenarios} devices={devices} logs={logs} onEdit={openScenarioEditor} onRefresh={refresh} onDelete={removeScenario} />}
   </Content></Layout>
+  {deviceNotificationHolder}
   <DevicePresetFlow open={builderOpen} onClose={()=>setBuilderOpen(false)} onDone={async id=>{setBuilderOpen(false);await refresh();if(id)await detail(id);}}/>
   <Modal open={Boolean(deleteTarget)} title="Удалить устройство?" okText="Удалить" cancelText="Отмена" okButtonProps={{danger:true}} confirmLoading={deleteBusy} onCancel={()=>{if(!deleteBusy){setDeleteTarget(null);setDeleteError('');}}} onOk={confirmDeleteDevice}>
     {deleteTarget&&<Text>Устройство «{deleteTarget.title}» будет удалено из списка.</Text>}
