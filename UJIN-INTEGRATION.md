@@ -23,7 +23,7 @@
 Из корня проекта в PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe backend\tools\configure_ujin.py --access-file "C:\Users\lukuz\OneDrive\Desktop\kepka\доступы.json" --live
+.\.venv\Scripts\python.exe backend\tools\configure_ujin.py --access-file "C:\\...\\доступы.json" --live
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
 
