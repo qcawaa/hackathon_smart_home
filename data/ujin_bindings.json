@@ -1,0 +1,32 @@
+{
+  "light_1": {
+    "serialnumber": "17048733610013356",
+    "ext_guid": "kepka_light_01",
+    "signal_map": {},
+    "seen_tasks": {}
+  },
+  "leak_1": {
+    "serialnumber": "17048805610016974",
+    "ext_guid": "kepka_leak_01",
+    "signal_map": {},
+    "seen_tasks": {}
+  },
+  "thermostat_1": {
+    "serialnumber": "17048877610012597",
+    "ext_guid": "kepka_thermostat_01",
+    "signal_map": {},
+    "seen_tasks": {}
+  },
+  "counter_1": {
+    "serialnumber": "17025585610004644",
+    "ext_guid": "kepka_counter_01",
+    "signal_map": {},
+    "seen_tasks": {}
+  },
+  "barrier_1": {
+    "serialnumber": "17048769610019833",
+    "ext_guid": "kepka_barrier_01",
+    "signal_map": {},
+    "seen_tasks": {}
+  }
+}
